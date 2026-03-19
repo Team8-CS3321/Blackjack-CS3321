@@ -85,14 +85,22 @@ io.on("connection", (socket) => {
   let currentRoom = null;
 
   // ── Create a new room ──────────────────────────────────────────────
-  socket.on("room:create", ({ username }, callback) => {
+  socket.on("room:create", (payload = {}, callback) => {
+    const { username } = payload || {};
+
     if (currentRoom) {
-      return callback({ error: "You are already in a room. Leave first." });
+      if (typeof callback === "function") {
+        return callback({ error: "You are already in a room. Leave first." });
+      }
+      return;
     }
 
     const normalizedUsername = normalizeUsername(username);
     if (!normalizedUsername) {
-      return callback({ error: "Username is required." });
+      if (typeof callback === "function") {
+        return callback({ error: "Username is required." });
+      }
+      return;
     }
 
     const code = generateRoomCode();
@@ -110,7 +118,9 @@ io.on("connection", (socket) => {
     currentRoom = code;
 
     console.log(`[room:create] ${normalizedUsername} created room ${code}`);
-    callback({ success: true, code });
+    if (typeof callback === "function") {
+      callback({ success: true, code });
+    }
     broadcastRoomUpdate(code);
   });
 
@@ -172,10 +182,13 @@ io.on("connection", (socket) => {
   });
 
   // ── Chat message ───────────────────────────────────────────────────
-  socket.on("chat:message", ({ message }) => {
+  socket.on("chat:message", (payload = {}) => {
     if (!currentRoom) return;
     const room = rooms.get(currentRoom);
     if (!room) return;
+
+    const { message } = payload || {};
+    if (typeof message !== "string") return;
 
     const normalizedMessage = normalizeChatMessage(message);
     if (!normalizedMessage) return;
