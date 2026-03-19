@@ -6,11 +6,12 @@ const path = require("path");
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
+const publicDir = path.join(__dirname, "public");
 
-app.use(express.static(__dirname));
+app.use(express.static(publicDir));
 
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "index.html"));
+  res.sendFile(path.join(publicDir, "index.html"));
 });
 
 // ─── In-memory store for rooms ───────────────────────────────────────
