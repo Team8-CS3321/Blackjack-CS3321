@@ -290,6 +290,27 @@
     const MAX_USERNAME_LENGTH = 16;
     const MAX_CHAT_LENGTH = 200;
     let currentRoomState = null;
+    let wasDisconnected = false;
+
+    // ── Connection lifecycle ──────────────────
+    socket.on("disconnect", () => {
+      wasDisconnected = true;
+      if (!$room.classList.contains("hidden")) {
+        $room.classList.add("hidden");
+        $lobby.classList.remove("hidden");
+        $chatBox.innerHTML = "";
+        $players.innerHTML = "";
+        currentRoomState = null;
+      }
+      showError("Lost connection to server. Returned to lobby.");
+    });
+
+    socket.on("connect", () => {
+      if (wasDisconnected) {
+        wasDisconnected = false;
+        showError("Reconnected. Please rejoin or create a table.");
+      }
+    });
 
     // ── Lobby actions ────────────────────────
     function showError(msg) {

@@ -1,6 +1,7 @@
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
+const crypto = require("crypto");
 const path = require("path");
 
 const app = express();
@@ -28,12 +29,8 @@ function generateRoomCode() {
   return rooms.has(code) ? generateRoomCode() : code;
 }
 
-function getPlayerIP(socket) {
-  return (
-    socket.handshake.headers["x-forwarded-for"] ||
-    socket.handshake.address ||
-    "unknown"
-  );
+function generatePlayerId() {
+  return crypto.randomUUID();
 }
 
 function getRoomState(room) {
@@ -79,32 +76,27 @@ function broadcastRoomUpdate(roomCode) {
 // ─── Socket.io event handling ────────────────────────────────────────
 
 io.on("connection", (socket) => {
-  const ip = getPlayerIP(socket);
-  console.log(`[connect] ${socket.id} from ${ip}`);
+  const playerId = generatePlayerId();
+  console.log(`[connect] ${socket.id} (player: ${playerId})`);
 
   let currentRoom = null;
 
   // ── Create a new room ──────────────────────────────────────────────
   socket.on("room:create", (payload = {}, callback) => {
+    if (typeof callback !== "function") return;
     const { username } = payload || {};
 
     if (currentRoom) {
-      if (typeof callback === "function") {
-        return callback({ error: "You are already in a room. Leave first." });
-      }
-      return;
+      return callback({ error: "You are already in a room. Leave first." });
     }
 
     const normalizedUsername = normalizeUsername(username);
     if (!normalizedUsername) {
-      if (typeof callback === "function") {
-        return callback({ error: "Username is required." });
-      }
-      return;
+      return callback({ error: "Username is required." });
     }
 
     const code = generateRoomCode();
-    const player = { id: socket.id, username: normalizedUsername, ip, ready: false };
+    const player = { id: socket.id, username: normalizedUsername, playerId, ready: false };
 
     const room = {
       code,
@@ -118,14 +110,15 @@ io.on("connection", (socket) => {
     currentRoom = code;
 
     console.log(`[room:create] ${normalizedUsername} created room ${code}`);
-    if (typeof callback === "function") {
-      callback({ success: true, code });
-    }
+    callback({ success: true, code });
     broadcastRoomUpdate(code);
   });
 
   // ── Join an existing room ──────────────────────────────────────────
-  socket.on("room:join", ({ username, code }, callback) => {
+  socket.on("room:join", (payload = {}, callback) => {
+    if (typeof callback !== "function") return;
+    const { username, code } = payload || {};
+
     if (currentRoom) {
       return callback({ error: "You are already in a room. Leave first." });
     }
@@ -155,7 +148,7 @@ io.on("connection", (socket) => {
       return callback({ error: "Username already taken in this room." });
     }
 
-    const player = { id: socket.id, username: normalizedUsername, ip, ready: false };
+    const player = { id: socket.id, username: normalizedUsername, playerId, ready: false };
     room.players.push(player);
     socket.join(roomCode);
     currentRoom = roomCode;
