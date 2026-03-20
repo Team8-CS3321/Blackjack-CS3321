@@ -270,8 +270,13 @@
   </div>
 
   <!-- Socket.io client -->
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js">
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
   <script>
+    if (typeof io === "undefined") {
+      document.getElementById("lobbyError").textContent = "> Failed to load Socket.IO. Check your internet connection.";
+      document.getElementById("lobbyError").classList.remove("hidden");
+      throw new Error("Socket.IO failed to load");
+    }
     const socket = io();
 
     // ── DOM refs ──────────────────────────────
@@ -291,6 +296,7 @@
     const MAX_CHAT_LENGTH = 200;
     let currentRoomState = null;
     let wasDisconnected = false;
+    let myUsername = null;
 
     // ── Connection lifecycle ──────────────────
     socket.on("disconnect", () => {
@@ -344,6 +350,7 @@
 
       socket.emit("room:create", { username }, (res) => {
         if (res.error) return showError(res.error);
+        myUsername = username;
         enterRoom(res.code);
       });
     }
@@ -359,6 +366,7 @@
 
       socket.emit("room:join", { username, code }, (res) => {
         if (res.error) return showError(res.error);
+        myUsername = username;
         enterRoom(res.code);
       });
     }
@@ -382,6 +390,7 @@
       $chatBox.innerHTML = "";
       $players.innerHTML = "";
       currentRoomState = null;
+      myUsername = null;
       renderReadyState();
       renderWaitingText();
     }
@@ -401,7 +410,9 @@
           let classes = [];
           if (p.id === state.hostId) classes.push("host");
           if (p.ready) classes.push("ready");
-          return `<li class="${classes.join(" ")}">♠ ${escapeHtml(p.username)}</li>`;
+          const isMe = p.username === myUsername;
+          const youTag = isMe ? ' <span style="color:var(--green);">(YOU)</span>' : "";
+          return `<li class="${classes.join(" ")}">♠ ${escapeHtml(p.username)}${youTag}</li>`;
         })
         .join("");
 
@@ -440,7 +451,7 @@
       const readyButton = document.querySelector('button[onclick="toggleReady()"]');
       if (!readyButton || !currentRoomState) return;
 
-      const me = currentRoomState.players.find((p) => p.id === socket.id);
+      const me = currentRoomState.players.find((p) => p.username === myUsername);
       readyButton.textContent = me?.ready ? "[ UNREADY ]" : "[ READY ]";
     }
 

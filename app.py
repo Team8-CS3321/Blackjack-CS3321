@@ -3,7 +3,7 @@ import secrets
 import time
 import uuid
 
-from quart import Quart, send_from_directory
+from quart import Quart, send_from_directory, jsonify
 import socketio
 
 # ── App setup ────────────────────────────────────────────────────────
@@ -86,6 +86,11 @@ async def index():
     return await send_from_directory(app.static_folder, "index.html")
 
 
+@app.route("/health")
+async def health():
+    return jsonify({"status": "ok"})
+
+
 # ── Socket.IO event handling ─────────────────────────────────────────
 
 @sio.event
@@ -103,6 +108,9 @@ async def room_create(sid, payload=None):
     current_room = player_rooms.get(sid)
     if current_room:
         return {"error": "You are already in a room. Leave first."}
+
+    if sid not in player_info:
+        return {"error": "Not connected."}
 
     normalized_username = normalize_username(username)
     if not normalized_username:
@@ -124,7 +132,7 @@ async def room_create(sid, payload=None):
     }
 
     rooms[code] = room
-    sio.enter_room(sid, code)
+    await sio.enter_room(sid, code)
     player_rooms[sid] = code
 
     print(f"[room:create] {normalized_username} created room {code}")
@@ -141,6 +149,9 @@ async def room_join(sid, payload=None):
     current_room = player_rooms.get(sid)
     if current_room:
         return {"error": "You are already in a room. Leave first."}
+
+    if sid not in player_info:
+        return {"error": "Not connected."}
 
     normalized_username = normalize_username(username)
     if not normalized_username:
@@ -168,12 +179,11 @@ async def room_join(sid, payload=None):
         "ready": False,
     }
     room["players"].append(player)
-    sio.enter_room(sid, room_code)
+    await sio.enter_room(sid, room_code)
     player_rooms[sid] = room_code
 
     print(f"[room:join] {normalized_username} joined room {room_code}")
 
-    # Notify existing players
     await sio.emit(
         "room:player-joined",
         {"username": normalized_username},
@@ -256,7 +266,7 @@ async def leave_room(sid: str) -> None:
         (p for p in room["players"] if p["id"] == sid), None
     )
     room["players"] = [p for p in room["players"] if p["id"] != sid]
-    sio.leave_room(sid, current_room)
+    await sio.leave_room(sid, current_room)
 
     left_room = current_room
     player_rooms.pop(sid, None)
@@ -272,7 +282,6 @@ async def leave_room(sid: str) -> None:
             room=left_room,
         )
 
-        # Transfer host if needed
         if room["host_id"] == sid:
             room["host_id"] = room["players"][0]["id"]
             await sio.emit(
