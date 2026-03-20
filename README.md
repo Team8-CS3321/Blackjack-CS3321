@@ -1,15 +1,18 @@
-# ♠ Blackjack Multiplayer – Game Server
+# Blackjack Multiplayer
 
-> CS3321 Team Project – `game-server` feature branch
+> CS3321 Team 8 Project — Multiplayer Blackjack Game
 
 ## Quick Start
 
 ```bash
+# Create virtual environment (one-time)
+py -m venv venv
+
 # Install dependencies
-npm install
+venv/Scripts/pip install -r requirements.txt
 
 # Run the server
-npm run dev
+venv/Scripts/python app.py
 
 # Open in browser
 # http://localhost:3000
@@ -19,23 +22,21 @@ npm run dev
 
 | File | Purpose |
 |------|---------|
-| `server.js` | Express + Socket.io server — rooms, join codes, player tracking, chat |
-| `index.html` | Retro ASCII-styled client — lobby, room view, chat |
-| `package.json` | Dependencies: `express`, `socket.io` |
+| `app.py` | Quart + python-socketio server — rooms, join codes, player tracking, chat |
+| `public/index.html` | Retro ASCII-styled client — lobby, room view, chat |
+| `requirements.txt` | Dependencies: `quart`, `python-socketio`, `uvicorn` |
 
 ## How It Works
 
-1. **Create a table** → server generates a 5-char room code (e.g., `K7F3P`)
-2. **Share the code** → other players enter it to join (up to 6 per room)
-3. **Players tracked** by socket ID, username, and IP address
-4. **Chat** is scoped to the room
-5. **Ready toggle** per player (prep for game start logic)
+1. **Create a table** — server generates a 5-char room code (e.g., `K7F3P`)
+2. **Share the code** — other players enter it to join (up to 6 per room)
+3. **Chat** is scoped to the room
+4. **Ready toggle** per player (prep for game start logic)
 
-## Architecture (for connecting to game-core)
+## Socket.IO Events
 
-The server emits/listens for these Socket.io events:
+### Client -> Server
 
-### Client → Server
 | Event | Payload | Description |
 |-------|---------|-------------|
 | `room:create` | `{ username }` | Create new room |
@@ -44,22 +45,28 @@ The server emits/listens for these Socket.io events:
 | `player:ready` | — | Toggle ready status |
 | `chat:message` | `{ message }` | Send chat message |
 
-### Server → Client
+### Server -> Client
+
 | Event | Payload | Description |
 |-------|---------|-------------|
 | `room:update` | `{ code, players[], hostId, gameStarted }` | Full room state |
 | `room:player-joined` | `{ username }` | New player notification |
+| `room:player-left` | `{ username }` | Player left notification |
 | `room:new-host` | `{ username }` | Host transferred |
 | `chat:message` | `{ username, message, timestamp }` | Chat relay |
 
-## Next Steps (TODO)
+## TODO
 
-- [ ] Hook into Carter's `game-core` — emit `game:start`, `game:deal`, `game:hit`, `game:stand`
-- [ ] Broadcast game state (hands, scores, turn order) to all players
-- [ ] Integrate Gavin's ChatGPT API advisor as an optional toggle
-- [ ] Add player kick (host only)
-- [ ] Persist player stats across sessions (optional)
+- [ ] Integrate Deck of Cards API for card dealing
+- [ ] Game logic (hit, stand, bust, dealer turn)
+- [ ] Dockerfile for containerized deployment
+- [ ] GitHub Actions CI/CD pipeline
+- [ ] Doppler secret management
+- [ ] AWS deployment (EC2/ECS)
+- [ ] Unit tests (80% coverage target)
 
-## Branch Strategy
+## Team
 
-This lives on `game-server`. When ready, PR into `main` (trunk).
+- **Pravesh Aryal** — Server (Quart/Python port)
+- **Carter Luker** — GitHub org, architecture
+- **Steve Taylor (Gavin)** — TBD
