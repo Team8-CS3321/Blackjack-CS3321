@@ -5,12 +5,16 @@ import uuid
 
 from quart import Quart, send_from_directory, jsonify
 import socketio
+from game import GameManager
 
 # ── App setup ────────────────────────────────────────────────────────
 app = Quart(__name__, static_folder="public", static_url_path="")
 cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins=cors_origins)
 asgi_app = socketio.ASGIApp(sio, app)
+
+# ── Game manager ─────────────────────────────────────────────────────
+game_manager = GameManager()
 
 # ── In-memory store for rooms ────────────────────────────────────────
 rooms: dict[str, dict] = {}
@@ -290,6 +294,125 @@ async def leave_room(sid: str) -> None:
                 room=left_room,
             )
         await broadcast_room_update(left_room)
+
+
+# ── Game event handlers ──────────────────────────────────────────────
+
+@sio.on("game:start")
+async def game_start(sid, *args):
+    """Start a new Blackjack game (host only)."""
+    current_room = player_rooms.get(sid)
+    if not current_room:
+        return {"error": "Not in a room."}
+    
+    room = rooms.get(current_room)
+    if not room:
+        return {"error": "Room not found."}
+    
+    # Only host can start
+    if room["host_id"] != sid:
+        return {"error": "Only host can start the game."}
+    
+    if len(room["players"]) < 1:
+        return {"error": "Need at least 1 player."}
+    
+    # Create game
+    players_dict = {p["player_id"]: {"username": p["username"], "id": p["id"]} for p in room["players"]}
+    game = game_manager.create_game(current_room, players_dict)
+    room["game_started"] = True
+    
+    await broadcast_room_update(current_room)
+    await sio.emit("game:started", {"message": "Game started. Waiting for bets."}, room=current_room)
+    return {"success": True}
+
+
+@sio.on("game:place-bet")
+async def game_place_bet(sid, payload=None):
+    """Place a bet for the current round."""
+    payload = payload or {}
+    current_room = player_rooms.get(sid)
+    if not current_room:
+        return {"error": "Not in a room."}
+    
+    game = game_manager.get_game(current_room)
+    if not game:
+        return {"error": "No active game."}
+    
+    amount = payload.get("amount", 0)
+    if not isinstance(amount, int) or amount <= 0:
+        return {"error": "Invalid bet amount."}
+    
+    player_id = player_info[sid]["player_id"]
+    result = game.place_bet(player_id, amount)
+    
+    if "error" in result:
+        return result
+    
+    # Broadcast updated game state
+    await sio.emit("game:state", game.get_game_state(), room=current_room)
+    
+    # Check if all players have bet
+    if len(game.player_bets) == len(game.players_dict):
+        start_result = game.start_round()
+        await sio.emit("game:round-started", start_result, room=current_room)
+    
+    return result
+
+
+@sio.on("game:hit")
+async def game_hit(sid, *args):
+    """Player hits (draws a card)."""
+    current_room = player_rooms.get(sid)
+    if not current_room:
+        return {"error": "Not in a room."}
+    
+    game = game_manager.get_game(current_room)
+    if not game:
+        return {"error": "No active game."}
+    
+    player_id = player_info[sid]["player_id"]
+    result = game.hit(player_id)
+    
+    if "error" in result:
+        return result
+    
+    await sio.emit("game:state", result, room=current_room)
+    return result
+
+
+@sio.on("game:stand")
+async def game_stand(sid, *args):
+    """Player stands (stops drawing)."""
+    current_room = player_rooms.get(sid)
+    if not current_room:
+        return {"error": "Not in a room."}
+    
+    game = game_manager.get_game(current_room)
+    if not game:
+        return {"error": "No active game."}
+    
+    player_id = player_info[sid]["player_id"]
+    result = game.stand(player_id)
+    
+    if "error" in result:
+        return result
+    
+    await sio.emit("game:state", result, room=current_room)
+    return result
+
+
+@sio.on("game:get-state")
+async def game_get_state(sid, *args):
+    """Get current game state."""
+    current_room = player_rooms.get(sid)
+    if not current_room:
+        return {"error": "Not in a room."}
+    
+    game = game_manager.get_game(current_room)
+    if not game:
+        return {"error": "No active game."}
+    
+    return game.get_game_state()
 
 
 # ── Start server ─────────────────────────────────────────────────────
