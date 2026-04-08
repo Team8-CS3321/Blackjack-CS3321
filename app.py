@@ -9,7 +9,7 @@ from game import GameManager
 
 # ── App setup ────────────────────────────────────────────────────────
 app = Quart(__name__, static_folder="public", static_url_path="")
-cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
+cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins=cors_origins)
 asgi_app = socketio.ASGIApp(sio, app)
 
