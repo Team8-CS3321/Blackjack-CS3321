@@ -1,0 +1,28 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+
+# Environment & secrets
+.env
+.env.*
+
+# Version control
+.git/
+.gitignore
+
+# Docker files themselves (no need to copy in)
+Dockerfile
+.dockerignore
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Editor/IDE configs
+.vscode/
+.idea/
+*.swp
