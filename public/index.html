@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>♠ Blackjack ♠</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --green: #33ff33;
+      --dim-green: #1a8c1a;
+      --red: #ff4444;
+      --amber: #ffaa00;
+      --bg: #0a0a0a;
+      --card-bg: #111;
+    }
+
+    body {
+      font-family: 'VT323', monospace;
+      background: var(--bg);
+      color: var(--green);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      text-shadow: 0 0 8px rgba(51, 255, 51, 0.4);
+    }
+
+    #app {
+      max-width: 700px;
+      width: 100%;
+    }
+
+    .ascii-header {
+      margin: 0 auto 24px;
+      text-align: center;
+      font-size: 16px;
+      line-height: 1.2;
+      color: var(--amber);
+      text-shadow: 0 0 12px rgba(255, 170, 0, 0.4);
+      border: 2px solid var(--amber);
+      padding: 10px 18px;
+      box-shadow: 0 0 12px rgba(255, 170, 0, 0.35), inset 0 0 12px rgba(255, 170, 0, 0.15);
+    }
+
+    .ascii-header .title-line {
+      letter-spacing: 0.28em;
+      font-size: 26px;
+      margin-bottom: 4px;
+    }
+
+    .ascii-header .sub-line {
+      letter-spacing: 0.08em;
+      font-size: 40px;
+    }
+
+    .panel {
+      border: 2px solid var(--dim-green);
+      padding: 20px;
+      margin-bottom: 16px;
+      background: var(--card-bg);
+    }
+
+    .panel-title {
+      color: var(--amber);
+      font-size: 22px;
+      margin-bottom: 12px;
+    }
+
+    label {
+      display: block;
+      font-size: 20px;
+      margin-bottom: 4px;
+    }
+
+    input[type="text"] {
+      font-family: 'VT323', monospace;
+      font-size: 22px;
+      background: transparent;
+      border: 1px solid var(--dim-green);
+      color: var(--green);
+      padding: 8px 12px;
+      width: 100%;
+      margin-bottom: 12px;
+      outline: none;
+    }
+    input[type="text"]:focus {
+      border-color: var(--green);
+      box-shadow: 0 0 8px rgba(51, 255, 51, 0.3);
+    }
+    input[type="text"]::placeholder { color: var(--dim-green); }
+
+    .btn {
+      font-family: 'VT323', monospace;
+      font-size: 22px;
+      background: transparent;
+      color: var(--green);
+      border: 2px solid var(--green);
+      padding: 8px 24px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn:hover {
+      background: var(--green);
+      color: var(--bg);
+      text-shadow: none;
+    }
+    .btn-amber {
+      color: var(--amber);
+      border-color: var(--amber);
+    }
+    .btn-amber:hover {
+      background: var(--amber);
+      color: var(--bg);
+    }
+    .btn-red {
+      color: var(--red);
+      border-color: var(--red);
+    }
+    .btn-red:hover {
+      background: var(--red);
+      color: var(--bg);
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .error {
+      color: var(--red);
+      font-size: 20px;
+      margin-bottom: 8px;
+      text-shadow: 0 0 8px rgba(255, 68, 68, 0.4);
+    }
+
+    .player-list {
+      list-style: none;
+      font-size: 20px;
+    }
+    .player-list li {
+      padding: 4px 0;
+    }
+    .player-list .host::after {
+      content: " [HOST]";
+      color: var(--amber);
+    }
+    .player-list .ready::after {
+      content: " ✓ READY";
+      color: var(--green);
+    }
+
+    .room-code {
+      font-size: 36px;
+      color: var(--amber);
+      letter-spacing: 6px;
+      text-shadow: 0 0 16px rgba(255, 170, 0, 0.5);
+    }
+
+    #chatBox {
+      border: 1px solid var(--dim-green);
+      height: 180px;
+      overflow-y: auto;
+      padding: 8px;
+      margin-bottom: 8px;
+      font-size: 18px;
+      background: rgba(0, 0, 0, 0.5);
+    }
+    #chatBox .msg-user { color: var(--amber); }
+    #chatBox .msg-system { color: var(--dim-green); font-style: italic; }
+
+    .chat-input-row {
+      display: flex;
+      gap: 8px;
+    }
+    .chat-input-row input { flex: 1; margin-bottom: 0; }
+
+    .hidden { display: none; }
+
+    .blink {
+      animation: blink 1s step-end infinite;
+    }
+    @keyframes blink {
+      50% { opacity: 0; }
+    }
+
+    .scanline {
+      pointer-events: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 0, 0.08) 2px,
+        rgba(0, 0, 0, 0.08) 4px
+      );
+      z-index: 999;
+    }
+  </style>
+</head>
+<body>
+  <div class="scanline"></div>
+
+  <div id="app">
+    <div class="ascii-header">
+      <div class="title-line">♠ ♥ BLACKJACK ♣ ♦</div>
+      <div class="sub-line">~ multiplayer ~</div>
+    </div>
+
+    <!-- ── LOBBY SCREEN ─────────────────────── -->
+    <div id="lobby">
+      <div class="panel">
+        <div class="panel-title">&gt; ENTER YOUR NAME</div>
+        <input type="text" id="usernameInput" placeholder="username" maxlength="16" autofocus />
+        <div id="lobbyError" class="error hidden"></div>
+        <div class="btn-row">
+          <button class="btn" onclick="createRoom()">[ CREATE TABLE ]</button>
+          <button class="btn btn-amber" onclick="showJoin()">[ JOIN TABLE ]</button>
+        </div>
+      </div>
+
+      <div id="joinPanel" class="panel hidden">
+        <div class="panel-title">&gt; ENTER ROOM CODE</div>
+        <input type="text" id="codeInput" placeholder="XXXXX" maxlength="5"
+               style="text-transform:uppercase; letter-spacing:4px;" />
+        <button class="btn btn-amber" onclick="joinRoom()">[ JOIN ]</button>
+      </div>
+    </div>
+
+    <!-- ── ROOM SCREEN ──────────────────────── -->
+    <div id="room" class="hidden">
+      <div class="panel">
+        <div class="panel-title">&gt; TABLE CODE</div>
+        <div class="room-code" id="roomCodeDisplay"></div>
+        <p style="font-size:18px; color:var(--dim-green); margin-top:4px;">
+          Share this code with your friends to join.
+        </p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">&gt; PLAYERS</div>
+        <ul class="player-list" id="playerList"></ul>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">&gt; CHAT</div>
+        <div id="chatBox"></div>
+        <div class="chat-input-row">
+          <input type="text" id="chatInput" placeholder="type a message..."
+                 onkeydown="if(event.key==='Enter')sendChat()" />
+          <button class="btn" onclick="sendChat()">SEND</button>
+        </div>
+      </div>
+
+      <div class="btn-row" style="margin-top:8px;">
+        <button class="btn" onclick="toggleReady()">[ READY ]</button>
+        <button class="btn btn-red" onclick="leaveRoom()">[ LEAVE ]</button>
+      </div>
+
+      <p id="waitingMsg" style="margin-top:12px; font-size:20px;">
+        <span class="blink">▌</span> Waiting for players...
+      </p>
+    </div>
+  </div>
+
+  <!-- Socket.io client -->
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
+  <script>
+    if (typeof io === "undefined") {
+      document.getElementById("lobbyError").textContent = "> Failed to load Socket.IO. Check your internet connection.";
+      document.getElementById("lobbyError").classList.remove("hidden");
+      throw new Error("Socket.IO failed to load");
+    }
+    const socket = io();
+
+    // ── DOM refs ──────────────────────────────
+    const $lobby     = document.getElementById("lobby");
+    const $room      = document.getElementById("room");
+    const $joinPanel = document.getElementById("joinPanel");
+    const $lobbyErr  = document.getElementById("lobbyError");
+    const $username  = document.getElementById("usernameInput");
+    const $codeInput = document.getElementById("codeInput");
+    const $roomCode  = document.getElementById("roomCodeDisplay");
+    const $players   = document.getElementById("playerList");
+    const $chatBox   = document.getElementById("chatBox");
+    const $chatInput = document.getElementById("chatInput");
+    const $waitingMsg = document.getElementById("waitingMsg");
+
+    const MAX_USERNAME_LENGTH = 16;
+    const MAX_CHAT_LENGTH = 200;
+    let currentRoomState = null;
+    let wasDisconnected = false;
+    let myUsername = null;
+
+    // ── Connection lifecycle ──────────────────
+    socket.on("disconnect", () => {
+      wasDisconnected = true;
+      if (!$room.classList.contains("hidden")) {
+        $room.classList.add("hidden");
+        $lobby.classList.remove("hidden");
+        $chatBox.innerHTML = "";
+        $players.innerHTML = "";
+        currentRoomState = null;
+      }
+      showError("Lost connection to server. Returned to lobby.");
+    });
+
+    socket.on("connect", () => {
+      if (wasDisconnected) {
+        wasDisconnected = false;
+        showError("Reconnected. Please rejoin or create a table.");
+      }
+    });
+
+    // ── Lobby actions ────────────────────────
+    function showError(msg) {
+      $lobbyErr.textContent = "> " + msg;
+      $lobbyErr.classList.remove("hidden");
+    }
+    function clearError() {
+      $lobbyErr.classList.add("hidden");
+    }
+
+    function getUsername() {
+      const name = $username.value.trim().slice(0, MAX_USERNAME_LENGTH);
+      if (!name) {
+        showError("Enter a username first.");
+        return null;
+      }
+      clearError();
+      return name;
+    }
+
+    function showJoin() {
+      $joinPanel.classList.toggle("hidden");
+      if (!$joinPanel.classList.contains("hidden")) {
+        $codeInput.focus();
+      }
+    }
+
+    function createRoom() {
+      const username = getUsername();
+      if (!username) return;
+
+      socket.emit("room:create", { username }, (res) => {
+        if (res.error) return showError(res.error);
+        myUsername = username;
+        enterRoom(res.code);
+      });
+    }
+
+    function joinRoom() {
+      const username = getUsername();
+      if (!username) return;
+      const code = $codeInput.value.trim().toUpperCase();
+      if (!code) {
+        showError("Enter a room code.");
+        return;
+      }
+
+      socket.emit("room:join", { username, code }, (res) => {
+        if (res.error) return showError(res.error);
+        myUsername = username;
+        enterRoom(res.code);
+      });
+    }
+
+    function enterRoom(code) {
+      $lobby.classList.add("hidden");
+      $room.classList.remove("hidden");
+      $roomCode.textContent = code;
+      $chatInput.value = "";
+    }
+
+    // ── Room actions ─────────────────────────
+    function toggleReady() {
+      socket.emit("player:ready");
+    }
+
+    function leaveRoom() {
+      socket.emit("room:leave");
+      $room.classList.add("hidden");
+      $lobby.classList.remove("hidden");
+      $chatBox.innerHTML = "";
+      $players.innerHTML = "";
+      currentRoomState = null;
+      myUsername = null;
+      renderReadyState();
+      renderWaitingText();
+    }
+
+    function sendChat() {
+      const msg = $chatInput.value.trim().slice(0, MAX_CHAT_LENGTH);
+      if (!msg) return;
+      socket.emit("chat:message", { message: msg });
+      $chatInput.value = "";
+    }
+
+    // ── Socket events ────────────────────────
+    socket.on("room:update", (state) => {
+      currentRoomState = state;
+      $players.innerHTML = state.players
+        .map((p) => {
+          let classes = [];
+          if (p.id === state.hostId) classes.push("host");
+          if (p.ready) classes.push("ready");
+          const isMe = p.username === myUsername;
+          const youTag = isMe ? ' <span style="color:var(--green);">(YOU)</span>' : "";
+          return `<li class="${classes.join(" ")}">♠ ${escapeHtml(p.username)}${youTag}</li>`;
+        })
+        .join("");
+
+      renderReadyState();
+      renderWaitingText();
+    });
+
+    socket.on("room:player-joined", ({ username }) => {
+      appendChat(null, `${username} joined the table.`);
+    });
+
+    socket.on("room:new-host", ({ username }) => {
+      appendChat(null, `${username} is now the host.`);
+    });
+
+    socket.on("room:player-left", ({ username }) => {
+      appendChat(null, `${username} left the table.`);
+    });
+
+    socket.on("chat:message", ({ username, message }) => {
+      appendChat(username, message);
+    });
+
+    function appendChat(user, text) {
+      const div = document.createElement("div");
+      if (user) {
+        div.innerHTML = `<span class="msg-user">${escapeHtml(user)}:</span> ${escapeHtml(text)}`;
+      } else {
+        div.innerHTML = `<span class="msg-system">* ${escapeHtml(text)}</span>`;
+      }
+      $chatBox.appendChild(div);
+      $chatBox.scrollTop = $chatBox.scrollHeight;
+    }
+
+    function renderReadyState() {
+      const readyButton = document.querySelector('button[onclick="toggleReady()"]');
+      if (!readyButton || !currentRoomState) return;
+
+      const me = currentRoomState.players.find((p) => p.username === myUsername);
+      readyButton.textContent = me?.ready ? "[ UNREADY ]" : "[ READY ]";
+    }
+
+    function renderWaitingText() {
+      if (!currentRoomState) {
+        $waitingMsg.innerHTML = '<span class="blink">▌</span> Waiting for players...';
+        return;
+      }
+
+      const total = currentRoomState.players.length;
+      const readyCount = currentRoomState.players.filter((p) => p.ready).length;
+      if (total < 2) {
+        $waitingMsg.innerHTML = '<span class="blink">▌</span> Waiting for at least 2 players...';
+        return;
+      }
+
+      $waitingMsg.innerHTML = `<span class="blink">▌</span> Players ready: ${readyCount}/${total}`;
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement("div");
+      div.appendChild(document.createTextNode(str));
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>
