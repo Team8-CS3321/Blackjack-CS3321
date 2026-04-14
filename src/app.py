@@ -2,11 +2,21 @@ import os
 import secrets
 import time
 import uuid
+from ChatGPTClient import ChatGPTClient
 
 from quart import Quart, send_from_directory, jsonify
 import socketio
 from game import GameManager
 from pathlib import Path
+
+
+# ── ChatGPT Client ────────────────────────────────────────────────────
+try:
+    chat = ChatGPTClient()
+except Exception as e:
+    print(f"[warn] ChatGPTClient init failed: {e}")
+    chat = None
+
 
 # ── App setup ────────────────────────────────────────────────────────
 app = Quart(
