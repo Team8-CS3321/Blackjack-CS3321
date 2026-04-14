@@ -6,7 +6,7 @@ from ChatGPTClient import ChatGPTClient
 
 from quart import Quart, send_from_directory, jsonify
 import socketio
-from game import GameManager
+from game import GameManager, GamePhase
 from pathlib import Path
 
 
@@ -156,7 +156,7 @@ async def room_create(sid, payload=None):
 
     print(f"[room:create] {normalized_username} created room {code}")
     await broadcast_room_update(code)
-    return {"success": True, "code": code}
+    return {"success": True, "code": code, "player_id": player["player_id"]}
 
 
 @sio.on("room:join")
@@ -210,7 +210,7 @@ async def room_join(sid, payload=None):
         skip_sid=sid,
     )
     await broadcast_room_update(room_code)
-    return {"success": True, "code": room_code}
+    return {"success": True, "code": room_code, "player_id": player["player_id"]}
 
 
 @sio.on("player:ready")
@@ -330,6 +330,8 @@ async def game_start(sid, *args):
     
     if len(room["players"]) < 1:
         return {"error": "Need at least 1 player."}
+    if not all(p["ready"] for p in room["players"]):
+        return {"error": "All players must be ready."}
     
     # Create game
     players_dict = {p["player_id"]: {"username": p["username"], "id": p["id"]} for p in room["players"]}
@@ -422,12 +424,96 @@ async def game_get_state(sid, *args):
     current_room = player_rooms.get(sid)
     if not current_room:
         return {"error": "Not in a room."}
-    
+
     game = game_manager.get_game(current_room)
     if not game:
         return {"error": "No active game."}
-    
+
     return game.get_game_state()
+
+
+@sio.on("game:next-round")
+async def game_next_round(sid, *args):
+    """Reset the game for the next round. Host-only in multiplayer; sole player in singleplayer."""
+    current_room = player_rooms.get(sid)
+    if not current_room:
+        return {"error": "Not in a room."}
+
+    room = rooms.get(current_room)
+    if not room:
+        return {"error": "Room not found."}
+
+    game = game_manager.get_game(current_room)
+    if not game:
+        return {"error": "No active game."}
+
+    if game.phase != GamePhase.ROUND_COMPLETE:
+        return {"error": "Round not complete yet."}
+
+    if len(room["players"]) == 1:
+        if sid != room["players"][0]["id"]:
+            return {"error": "Not authorized."}
+    else:
+        if sid != room["host_id"]:
+            return {"error": "Only host can start next round."}
+
+    game.reset_for_next_round()
+    await sio.emit("game:state", game.get_game_state(), room=current_room)
+    return {"success": True}
+
+
+@sio.on("singleplayer:start")
+async def singleplayer_start(sid, payload=None):
+    """Create a private 1-player room and start the game atomically."""
+    payload = payload or {}
+
+    if sid in player_rooms:
+        return {"error": "You are already in a room. Leave first."}
+
+    if sid not in player_info:
+        return {"error": "Not connected."}
+
+    normalized_username = normalize_username(payload.get("username", ""))
+    if not normalized_username:
+        return {"error": "Username is required."}
+
+    code = generate_room_code()
+    player_id = player_info[sid]["player_id"]
+    player = {
+        "id": sid,
+        "username": normalized_username,
+        "player_id": player_id,
+        "ready": True,
+    }
+
+    room = {
+        "code": code,
+        "host_id": sid,
+        "players": [player],
+        "game_started": True,
+        "private": True,
+        "capacity": 1,
+    }
+    rooms[code] = room
+    await sio.enter_room(sid, code)
+    player_rooms[sid] = code
+
+    players_dict = {player_id: {"username": normalized_username, "id": sid}}
+    game = game_manager.create_game(code, players_dict)
+
+    print(f"[singleplayer:start] {normalized_username} started solo room {code}")
+
+    await sio.emit(
+        "singleplayer:ready",
+        {
+            "code": code,
+            "player_id": player_id,
+            "room": get_room_state(room),
+            "state": game.get_game_state(),
+        },
+        to=sid,
+    )
+    return {"success": True, "code": code, "player_id": player_id}
 
 
 # ── Start server ─────────────────────────────────────────────────────

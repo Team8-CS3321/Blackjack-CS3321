@@ -141,6 +141,15 @@ class RoomGame:
             "dealer_value": self.game.get_dealer_hand_value(),
         }
     
+    def reset_for_next_round(self) -> None:
+        """Reset for a new round, preserving player_objects insertion order."""
+        self.game.reset_round()
+        for player_obj in self.player_objects.values():
+            player_obj.bet = 0
+        self.player_bets.clear()
+        self.current_player_index = 0
+        self.phase = GamePhase.WAITING_FOR_BETS
+
     def get_game_state(self) -> dict:
         """Get current game state for broadcasting."""
         player_states = []
