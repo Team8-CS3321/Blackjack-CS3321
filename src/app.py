@@ -2,13 +2,17 @@ import os
 import secrets
 import time
 import uuid
+<<<<<<< HEAD
 from ChatGPTClient import ChatGPTClient
+=======
+>>>>>>> 768288035c487b67c89b81de6b73ebdd4210d847
 
 from quart import Quart, send_from_directory, jsonify
 import socketio
 from game import GameManager
 from pathlib import Path
 
+<<<<<<< HEAD
 
 
 # ── ChatGPT Client ────────────────────────────────────────────────────
@@ -21,6 +25,8 @@ chat = ChatGPTClient()
 
 
 
+=======
+>>>>>>> 768288035c487b67c89b81de6b73ebdd4210d847
 # ── App setup ────────────────────────────────────────────────────────
 app = Quart(
     __name__,
