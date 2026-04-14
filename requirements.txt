@@ -1,4 +1,0 @@
-quart
-python-socketio
-uvicorn
-openai
