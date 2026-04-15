@@ -6,13 +6,25 @@
 
 ```bash
 # Create virtual environment (one-time)
+
+python -m venv venv
+=======
 py -m venv venv
+
 
 # Install dependencies
 venv/Scripts/pip install -r requirements.txt
 
+
+# Login to doppler for team secrets
+doppler login
+
+# Run the server
+doppler run -- venv/Scripts/python src/app.py
+=======
 # Run the server
 venv/Scripts/python app.py
+
 
 # Open in browser
 # http://localhost:3000
@@ -24,6 +36,9 @@ venv/Scripts/python app.py
 |------|---------|
 | `app.py` | Quart + python-socketio server — rooms, join codes, player tracking, chat |
 | `public/index.html` | Retro ASCII-styled client — lobby, room view, chat |
+<<<<<<< HEAD
+| `requirements.txt` | Dependencies: `quart`, `python-socketio`, `uvicorn`, `openai` |
+=======
 | `requirements.txt` | Dependencies: `quart`, `python-socketio`, `uvicorn` |
 
 ## How It Works
