@@ -3,7 +3,9 @@ import os
 
 class ChatGPTClient:
     def __init__(self):
-        api_key = os.getenv("CHATGPT")
+        api_key = os.getenv("CHATGPT") or os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("Missing OpenAI API key: set CHATGPT or OPENAI_API_KEY.")
         self.client = OpenAI(api_key=api_key)
         self.request_timeout_seconds = 12
 
