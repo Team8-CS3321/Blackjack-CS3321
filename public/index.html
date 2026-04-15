@@ -179,6 +179,17 @@
       gap: 8px;
     }
     .chat-input-row input { flex: 1; margin-bottom: 0; }
+    .btn-ai {
+      color: var(--amber);
+      border-color: var(--amber);
+      padding: 8px 12px;
+      font-size: 18px;
+      white-space: nowrap;
+    }
+    .btn-ai:hover:not(:disabled) {
+      background: var(--amber);
+      color: var(--bg);
+    }
 
     .hidden { display: none; }
 
@@ -188,6 +199,109 @@
     @keyframes blink {
       50% { opacity: 0; }
     }
+
+    /* ── Game table ─────────────────────────── */
+    #gameTable { padding: 16px; }
+    .dealer-area {
+      border: 1px dashed var(--amber);
+      padding: 10px;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+    .dealer-area .label { color: var(--amber); font-size: 18px; }
+    .seats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .seat {
+      border: 1px solid var(--dim-green);
+      padding: 8px;
+      font-size: 16px;
+      background: rgba(0,0,0,0.4);
+    }
+    .seat.active {
+      border-color: var(--amber);
+      box-shadow: 0 0 10px rgba(255,170,0,0.45);
+    }
+    .seat.me { border-color: var(--green); }
+    .seat .seat-name { color: var(--amber); font-size: 18px; }
+    .seat .seat-status { color: var(--dim-green); font-style: italic; }
+    .seat .seat-status.win { color: var(--green); font-style: normal; }
+    .seat .seat-status.lose,
+    .seat .seat-status.bust { color: var(--red); font-style: normal; }
+    .hand-row {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+      margin: 6px 0;
+    }
+    .card {
+      display: inline-block;
+      min-width: 38px;
+      padding: 4px 6px;
+      background: #f5f5dc;
+      color: #111;
+      border: 1px solid #000;
+      border-radius: 4px;
+      font-family: 'VT323', monospace;
+      font-size: 20px;
+      text-align: center;
+      text-shadow: none;
+    }
+    .card.red { color: #c00; }
+    .card.back {
+      background: repeating-linear-gradient(45deg, #224, #224 4px, #335 4px, #335 8px);
+      color: var(--amber);
+      border-color: var(--amber);
+    }
+    .status-line {
+      font-size: 20px;
+      color: var(--amber);
+      margin-bottom: 10px;
+      text-align: center;
+    }
+    .controls {
+      border: 1px solid var(--dim-green);
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    .controls .chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+    .controls .chip {
+      font-family: 'VT323', monospace;
+      font-size: 18px;
+      padding: 4px 10px;
+      background: transparent;
+      color: var(--amber);
+      border: 1px solid var(--amber);
+      cursor: pointer;
+    }
+    .controls .chip:hover:not(:disabled) { background: var(--amber); color: var(--bg); }
+    .controls input[type="number"] {
+      font-family: 'VT323', monospace;
+      font-size: 20px;
+      background: transparent;
+      border: 1px solid var(--dim-green);
+      color: var(--green);
+      padding: 4px 8px;
+      width: 100px;
+    }
+    .btn:disabled, .chip:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    .btn:disabled:hover { background: transparent; color: inherit; }
+    .results-panel {
+      border: 1px solid var(--amber);
+      padding: 10px;
+      margin-bottom: 10px;
+      font-size: 18px;
+    }
+    .results-panel .result-line { padding: 2px 0; }
+    .results-panel .win { color: var(--green); }
+    .results-panel .lose { color: var(--red); }
+    .results-panel .push { color: var(--amber); }
 
     .scanline {
       pointer-events: none;
@@ -222,6 +336,7 @@
         <div class="btn-row">
           <button class="btn" onclick="createRoom()">[ CREATE TABLE ]</button>
           <button class="btn btn-amber" onclick="showJoin()">[ JOIN TABLE ]</button>
+          <button class="btn" onclick="startSingleplayer()">[ PLAY SINGLEPLAYER ]</button>
         </div>
       </div>
 
@@ -235,12 +350,15 @@
 
     <!-- ── ROOM SCREEN ──────────────────────── -->
     <div id="room" class="hidden">
-      <div class="panel">
+      <div class="panel" id="roomCodePanel">
         <div class="panel-title">&gt; TABLE CODE</div>
         <div class="room-code" id="roomCodeDisplay"></div>
         <p style="font-size:18px; color:var(--dim-green); margin-top:4px;">
           Share this code with your friends to join.
         </p>
+        <button class="btn btn-amber hidden" id="inviteBtn" onclick="revealInvite()"
+                style="margin-top:8px;">[ INVITE ]</button>
+        <p id="inviteFlash" class="hidden" style="font-size:18px; color:var(--amber); margin-top:6px;"></p>
       </div>
 
       <div class="panel">
@@ -254,11 +372,44 @@
         <div class="chat-input-row">
           <input type="text" id="chatInput" placeholder="type a message..."
                  onkeydown="if(event.key==='Enter')sendChat()" />
+          <button class="btn btn-ai" id="aiHelpBtn" onclick="askAIHelp()">AI HELP</button>
           <button class="btn" onclick="sendChat()">SEND</button>
         </div>
       </div>
 
+      <div id="gameTable" class="panel hidden">
+        <div class="panel-title">&gt; TABLE</div>
+        <div class="status-line" id="statusMsg">Waiting for game to start...</div>
+
+        <div class="dealer-area">
+          <div class="label">DEALER <span id="dealerValue"></span></div>
+          <div class="hand-row" id="dealerHand"></div>
+        </div>
+
+        <div class="seats-grid" id="seatsContainer"></div>
+
+        <div class="results-panel hidden" id="resultsBox"></div>
+
+        <div class="controls" id="controlsPanel">
+          <div class="chip-row" id="chipRow">
+            <button class="chip" onclick="addChip(10)" data-chip="10">+10</button>
+            <button class="chip" onclick="addChip(25)" data-chip="25">+25</button>
+            <button class="chip" onclick="addChip(50)" data-chip="50">+50</button>
+            <button class="chip" onclick="addChip(100)" data-chip="100">+100</button>
+            <button class="chip" onclick="clearBet()">CLEAR</button>
+            <input type="number" id="betInput" min="1" value="0" />
+          </div>
+          <div class="btn-row">
+            <button class="btn" id="betBtn" onclick="placeBet()" disabled>[ PLACE BET ]</button>
+            <button class="btn" id="hitBtn" onclick="hit()" disabled>[ HIT ]</button>
+            <button class="btn btn-amber" id="standBtn" onclick="stand()" disabled>[ STAND ]</button>
+          </div>
+        </div>
+      </div>
+
       <div class="btn-row" style="margin-top:8px;">
+        <button class="btn btn-amber hidden" id="startGameBtn" onclick="startGame()">[ START GAME ]</button>
+        <button class="btn btn-amber hidden" id="nextRoundBtn" onclick="nextRound()">[ NEXT ROUND ]</button>
         <button class="btn" onclick="toggleReady()">[ READY ]</button>
         <button class="btn btn-red" onclick="leaveRoom()">[ LEAVE ]</button>
       </div>
@@ -290,6 +441,7 @@
     const $players   = document.getElementById("playerList");
     const $chatBox   = document.getElementById("chatBox");
     const $chatInput = document.getElementById("chatInput");
+    const $aiHelpBtn = document.getElementById("aiHelpBtn");
     const $waitingMsg = document.getElementById("waitingMsg");
 
     const MAX_USERNAME_LENGTH = 16;
@@ -297,10 +449,41 @@
     let currentRoomState = null;
     let wasDisconnected = false;
     let myUsername = null;
+    let myPlayerId = null;
+    let isSinglePlayer = false;
+    let currentGameState = null;
+    let lastResults = null;
+    let lastDealerFull = null;
+    let lastDealerValue = null;
+    let aiHelpTimeoutId = null;
+    let aiHelpRequestToken = 0;
+
+    const $gameTable   = document.getElementById("gameTable");
+    const $statusMsg   = document.getElementById("statusMsg");
+    const $dealerHand  = document.getElementById("dealerHand");
+    const $dealerValue = document.getElementById("dealerValue");
+    const $seats       = document.getElementById("seatsContainer");
+    const $results     = document.getElementById("resultsBox");
+    const $betInput    = document.getElementById("betInput");
+    const $betBtn      = document.getElementById("betBtn");
+    const $hitBtn      = document.getElementById("hitBtn");
+    const $standBtn    = document.getElementById("standBtn");
+    const $startGameBtn = document.getElementById("startGameBtn");
+    const $nextRoundBtn = document.getElementById("nextRoundBtn");
+    const $chipRow     = document.getElementById("chipRow");
+    const $roomCodePanel = document.getElementById("roomCodePanel");
+    const $inviteBtn   = document.getElementById("inviteBtn");
+    const $inviteFlash = document.getElementById("inviteFlash");
 
     // ── Connection lifecycle ──────────────────
     socket.on("disconnect", () => {
       wasDisconnected = true;
+      if (aiHelpTimeoutId !== null) {
+        clearTimeout(aiHelpTimeoutId);
+        aiHelpTimeoutId = null;
+      }
+      $aiHelpBtn.disabled = false;
+      $aiHelpBtn.textContent = "AI HELP";
       if (!$room.classList.contains("hidden")) {
         $room.classList.add("hidden");
         $lobby.classList.remove("hidden");
@@ -351,6 +534,19 @@
       socket.emit("room:create", { username }, (res) => {
         if (res.error) return showError(res.error);
         myUsername = username;
+        myPlayerId = res.player_id || null;
+        enterRoom(res.code);
+      });
+    }
+
+    function startSingleplayer() {
+      const username = getUsername();
+      if (!username) return;
+      socket.emit("singleplayer:start", { username }, (res) => {
+        if (res.error) return showError(res.error);
+        myUsername = username;
+        myPlayerId = res.player_id || null;
+        isSinglePlayer = true;
         enterRoom(res.code);
       });
     }
@@ -367,6 +563,7 @@
       socket.emit("room:join", { username, code }, (res) => {
         if (res.error) return showError(res.error);
         myUsername = username;
+        myPlayerId = res.player_id || null;
         enterRoom(res.code);
       });
     }
@@ -376,6 +573,38 @@
       $room.classList.remove("hidden");
       $roomCode.textContent = code;
       $chatInput.value = "";
+      applyRoomCodeVisibility();
+    }
+
+    function applyRoomCodeVisibility() {
+      // In singleplayer-originated rooms, hide the code until host clicks INVITE.
+      // In normal multiplayer rooms, keep the code visible as before.
+      const isSolo = isSinglePlayer;
+      const alone = !currentRoomState || currentRoomState.players.length <= 1;
+      const iAmHost = currentRoomState
+        && myPlayerId
+        && currentRoomState.players.some(
+             (p) => p.id === currentRoomState.hostId && p.player_id === myPlayerId
+           );
+      if (isSolo && alone) {
+        $roomCode.classList.add("hidden");
+        $inviteBtn.classList.toggle("hidden", !iAmHost);
+      } else {
+        $roomCode.classList.remove("hidden");
+        // Once a second player has joined, the invite button is no longer meaningful.
+        $inviteBtn.classList.add("hidden");
+      }
+    }
+
+    function revealInvite() {
+      const code = $roomCode.textContent;
+      $roomCode.classList.remove("hidden");
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(code).catch(() => {});
+      }
+      $inviteFlash.textContent = "> Code copied: " + code;
+      $inviteFlash.classList.remove("hidden");
+      setTimeout(() => $inviteFlash.classList.add("hidden"), 2500);
     }
 
     // ── Room actions ─────────────────────────
@@ -384,13 +613,34 @@
     }
 
     function leaveRoom() {
+      aiHelpRequestToken += 1;
+      if (aiHelpTimeoutId !== null) {
+        clearTimeout(aiHelpTimeoutId);
+        aiHelpTimeoutId = null;
+      }
+      $aiHelpBtn.disabled = false;
+      $aiHelpBtn.textContent = "AI HELP";
       socket.emit("room:leave");
       $room.classList.add("hidden");
       $lobby.classList.remove("hidden");
       $chatBox.innerHTML = "";
       $players.innerHTML = "";
       currentRoomState = null;
+      currentGameState = null;
+      lastResults = null;
+      lastDealerFull = null;
+      lastDealerValue = null;
       myUsername = null;
+      myPlayerId = null;
+      isSinglePlayer = false;
+      $gameTable.classList.add("hidden");
+      $startGameBtn.classList.add("hidden");
+      $nextRoundBtn.classList.add("hidden");
+      $results.classList.add("hidden");
+      $inviteBtn.classList.add("hidden");
+      $inviteFlash.classList.add("hidden");
+      $roomCode.classList.remove("hidden");
+      $waitingMsg.classList.remove("hidden");
       renderReadyState();
       renderWaitingText();
     }
@@ -400,6 +650,44 @@
       if (!msg) return;
       socket.emit("chat:message", { message: msg });
       $chatInput.value = "";
+    }
+
+    function askAIHelp() {
+      if ($aiHelpBtn.disabled) return;
+
+      const query = $chatInput.value.trim().slice(0, 300);
+      const requestToken = ++aiHelpRequestToken;
+      $aiHelpBtn.disabled = true;
+      $aiHelpBtn.textContent = "AI...";
+
+      aiHelpTimeoutId = setTimeout(() => {
+        if (requestToken !== aiHelpRequestToken) return;
+        aiHelpTimeoutId = null;
+        $aiHelpBtn.disabled = false;
+        $aiHelpBtn.textContent = "AI HELP";
+        appendChat(null, "AI help: Request timed out. Please try again.");
+      }, 16000);
+
+      socket.emit("ai:help", { query }, (res) => {
+        if (requestToken !== aiHelpRequestToken) return;
+        if (aiHelpTimeoutId !== null) {
+          clearTimeout(aiHelpTimeoutId);
+          aiHelpTimeoutId = null;
+        }
+        $aiHelpBtn.disabled = false;
+        $aiHelpBtn.textContent = "AI HELP";
+
+        if (!res || res.error) {
+          appendChat(null, "AI help: " + ((res && res.error) || "No response from server."));
+          return;
+        }
+
+        if (query) {
+          appendChat(myUsername || "You", "[AI] " + query);
+          $chatInput.value = "";
+        }
+        appendChat("AI Helper", res.message);
+      });
     }
 
     // ── Socket events ────────────────────────
@@ -416,8 +704,16 @@
         })
         .join("");
 
+      // If the server says this was born as singleplayer, remember that
+      // client-side so invite-code visibility stays consistent on refresh.
+      if (state.singleplayerOrigin) isSinglePlayer = true;
+
       renderReadyState();
       renderWaitingText();
+      renderStartGameBtn();
+      applyRoomCodeVisibility();
+      // Re-render the table so spectators appear in seats grid immediately.
+      if (currentGameState) renderTable();
     });
 
     socket.on("room:player-joined", ({ username }) => {
@@ -456,6 +752,16 @@
     }
 
     function renderWaitingText() {
+      // Hide the waiting message once the game has started — the table UI
+      // carries its own status line from that point on.
+      const gameRunning =
+        (currentRoomState && currentRoomState.gameStarted) || currentGameState;
+      if (gameRunning) {
+        $waitingMsg.classList.add("hidden");
+        return;
+      }
+      $waitingMsg.classList.remove("hidden");
+
       if (!currentRoomState) {
         $waitingMsg.innerHTML = '<span class="blink">▌</span> Waiting for players...';
         return;
@@ -463,18 +769,282 @@
 
       const total = currentRoomState.players.length;
       const readyCount = currentRoomState.players.filter((p) => p.ready).length;
-      if (total < 2) {
-        $waitingMsg.innerHTML = '<span class="blink">▌</span> Waiting for at least 2 players...';
+      if (readyCount < total) {
+        $waitingMsg.innerHTML = `<span class="blink">▌</span> Waiting for players to ready up... (${readyCount}/${total})`;
         return;
       }
-
-      $waitingMsg.innerHTML = `<span class="blink">▌</span> Players ready: ${readyCount}/${total}`;
+      $waitingMsg.innerHTML = `<span class="blink">▌</span> All ready (${readyCount}/${total}). Host can start.`;
     }
 
     function escapeHtml(str) {
       const div = document.createElement("div");
       div.appendChild(document.createTextNode(str));
       return div.innerHTML;
+    }
+
+    // ── Game / table wiring ──────────────────────
+    socket.on("singleplayer:ready", ({ code, player_id, state }) => {
+      isSinglePlayer = true;
+      if (player_id) myPlayerId = player_id;
+      if (code) enterRoom(code);
+      $gameTable.classList.remove("hidden");
+      $waitingMsg.classList.add("hidden");
+      if (state) applyGameState(state);
+    });
+
+    socket.on("game:started", () => {
+      $gameTable.classList.remove("hidden");
+      socket.emit("game:get-state", (state) => {
+        if (state && !state.error) applyGameState(state);
+      });
+    });
+
+    socket.on("game:round-started", (state) => {
+      if (state) applyGameState(state);
+    });
+
+    socket.on("game:state", (payload) => {
+      if (!payload) return;
+      applyGameState(payload);
+    });
+
+    function startGame() {
+      socket.emit("game:start", (res) => {
+        if (res && res.error) appendChat(null, "Can't start: " + res.error);
+      });
+    }
+
+    function nextRound() {
+      socket.emit("game:next-round", (res) => {
+        if (res && res.error) appendChat(null, "Next round: " + res.error);
+      });
+    }
+
+    function addChip(value) {
+      const cur = parseInt($betInput.value, 10) || 0;
+      $betInput.value = cur + value;
+    }
+
+    function clearBet() {
+      $betInput.value = 0;
+    }
+
+    function placeBet() {
+      const amount = parseInt($betInput.value, 10) || 0;
+      if (amount <= 0) {
+        appendChat(null, "Enter a bet amount greater than zero.");
+        return;
+      }
+      socket.emit("game:place-bet", { amount }, (res) => {
+        if (res && res.error) appendChat(null, "Bet: " + res.error);
+      });
+    }
+
+    function hit() {
+      socket.emit("game:hit", (res) => {
+        if (res && res.error) appendChat(null, "Hit: " + res.error);
+      });
+    }
+
+    function stand() {
+      socket.emit("game:stand", (res) => {
+        if (res && res.error) appendChat(null, "Stand: " + res.error);
+      });
+    }
+
+    // Normalize server payloads. Hit/Stand sometimes emit the full state,
+    // sometimes emit a round-complete dict with `results` + full dealer hand.
+    function applyGameState(payload) {
+      const isRoundComplete =
+        payload.phase === "round_complete" || payload.results !== undefined;
+
+      if (isRoundComplete) {
+        lastResults = payload.results || lastResults;
+        if (Array.isArray(payload.dealer_hand)) lastDealerFull = payload.dealer_hand;
+        if (payload.dealer_value !== undefined) lastDealerValue = payload.dealer_value;
+        // Merge: if payload carries players, use it; else keep previous.
+        if (Array.isArray(payload.players)) {
+          currentGameState = {
+            ...currentGameState,
+            phase: "round_complete",
+            players: payload.players,
+            current_player_index: payload.current_player_index ?? currentGameState?.current_player_index ?? 0,
+          };
+        } else {
+          currentGameState = {
+            ...(currentGameState || {}),
+            phase: "round_complete",
+          };
+        }
+      } else {
+        currentGameState = payload;
+        if (payload.phase !== "round_complete") {
+          lastResults = null;
+        }
+      }
+      renderTable();
+    }
+
+    function renderTable() {
+      if (!currentGameState) return;
+      $gameTable.classList.remove("hidden");
+
+      const phase = currentGameState.phase;
+      const players = currentGameState.players || [];
+      const activeIndex = currentGameState.current_player_index ?? 0;
+
+      // Dealer
+      let dealerCards;
+      if (phase === "round_complete" && lastDealerFull) {
+        dealerCards = lastDealerFull.map(renderCard).join("");
+        $dealerValue.textContent = lastDealerValue !== null && lastDealerValue !== undefined
+          ? "(" + lastDealerValue + ")" : "";
+      } else {
+        const shown = currentGameState.dealer_hand || [];
+        dealerCards = shown.map(renderCard).join("") + renderCardBack();
+        $dealerValue.textContent = "";
+      }
+      $dealerHand.innerHTML = dealerCards;
+
+      // Seats (active players from game state, spectators from room state)
+      const seatedIds = new Set(players.map((p) => p.player_id));
+      const spectators = (currentRoomState && currentRoomState.players || [])
+        .filter((rp) => rp.player_id && !seatedIds.has(rp.player_id));
+      const spectatorHTML = spectators.map((sp) => {
+        const isMe = sp.player_id === myPlayerId;
+        return `
+          <div class="seat">
+            <div class="seat-name">♠ ${escapeHtml(sp.username)}${isMe ? ' (YOU)' : ''}</div>
+            <div class="seat-status">SPECTATING — joins next round</div>
+          </div>
+        `;
+      }).join("");
+
+      $seats.innerHTML = players.map((p, i) => {
+        const classes = ["seat"];
+        if (i === activeIndex && phase === "playing") classes.push("active");
+        if (p.player_id === myPlayerId) classes.push("me");
+        const cards = (p.hand || []).map(renderCard).join("") || '<span style="color:var(--dim-green)">—</span>';
+        const status = seatStatus(p, i, phase, activeIndex);
+        const valueStr = (p.hand_value !== null && p.hand_value !== undefined) ? p.hand_value : (p.is_bust ? "BUST" : "");
+        return `
+          <div class="${classes.join(' ')}">
+            <div class="seat-name">♠ ${escapeHtml(p.username)}${p.player_id === myPlayerId ? ' (YOU)' : ''}</div>
+            <div>Chips: ${p.balance} | Bet: ${p.bet}</div>
+            <div class="hand-row">${cards}</div>
+            <div>Value: ${valueStr}</div>
+            <div class="seat-status ${status.cls}">${escapeHtml(status.text)}</div>
+          </div>
+        `;
+      }).join("") + spectatorHTML;
+
+      // Status line
+      $statusMsg.textContent = phaseStatusText(phase, players, activeIndex);
+
+      // Results panel
+      if (phase === "round_complete" && lastResults) {
+        $results.classList.remove("hidden");
+        $results.innerHTML = Object.entries(lastResults).map(([name, r]) => {
+          const cls = r.outcome === "win" ? "win" : r.outcome === "lose" ? "lose" : "push";
+          const delta = r.outcome === "win" ? ` (+${r.payout})` : r.outcome === "push" ? ` (refund ${r.payout})` : "";
+          return `<div class="result-line ${cls}">${escapeHtml(name)}: ${r.outcome.toUpperCase()} — ${r.hand_value}${delta}</div>`;
+        }).join("");
+      } else {
+        $results.classList.add("hidden");
+      }
+
+      updateControlGating(phase, players, activeIndex);
+      renderStartGameBtn();
+      renderNextRoundBtn(phase);
+    }
+
+    function seatStatus(p, i, phase, activeIndex) {
+      if (phase === "round_complete" && lastResults && lastResults[p.username]) {
+        const outcome = lastResults[p.username].outcome;
+        return { text: outcome.toUpperCase(), cls: outcome };
+      }
+      if (p.is_bust) return { text: "BUST", cls: "bust" };
+      if (p.is_stand) return { text: "STAND", cls: "" };
+      if (phase === "waiting_for_bets") {
+        return { text: p.bet > 0 ? "BET PLACED" : "BETTING", cls: "" };
+      }
+      if (phase === "playing") {
+        return { text: i === activeIndex ? "PLAYING" : "WAITING", cls: "" };
+      }
+      if (phase === "dealer_turn") return { text: "DEALER PLAYS", cls: "" };
+      return { text: phase.toUpperCase(), cls: "" };
+    }
+
+    function phaseStatusText(phase, players, activeIndex) {
+      if (phase === "waiting_for_bets") return "Place your bets";
+      if (phase === "playing") {
+        const active = players[activeIndex];
+        if (!active) return "Playing...";
+        return (active.player_id === myPlayerId ? "Your turn" : active.username + "'s turn");
+      }
+      if (phase === "dealer_turn") return "Dealer's turn";
+      if (phase === "round_complete") return "Round over";
+      return "Waiting...";
+    }
+
+    function updateControlGating(phase, players, activeIndex) {
+      const me = players.find((p) => p.player_id === myPlayerId);
+      const canBet = phase === "waiting_for_bets" && me && me.bet === 0;
+      const isMyTurn = phase === "playing"
+        && players[activeIndex]
+        && players[activeIndex].player_id === myPlayerId
+        && me
+        && !me.is_bust
+        && !me.is_stand;
+
+      $betBtn.disabled = !canBet;
+      [...$chipRow.querySelectorAll(".chip")].forEach((c) => c.disabled = !canBet);
+      $betInput.disabled = !canBet;
+
+      $hitBtn.disabled = !isMyTurn;
+      $standBtn.disabled = !isMyTurn;
+    }
+
+    function iAmHost() {
+      if (!currentRoomState || !myPlayerId) return false;
+      return currentRoomState.players.some(
+        (p) => p.id === currentRoomState.hostId && p.player_id === myPlayerId
+      );
+    }
+
+    function renderStartGameBtn() {
+      if (!currentRoomState) {
+        $startGameBtn.classList.add("hidden");
+        return;
+      }
+      const allReady = currentRoomState.players.length >= 1 && currentRoomState.players.every((p) => p.ready);
+      const gameRunning = currentRoomState.gameStarted || (currentGameState && currentGameState.phase);
+      const show = iAmHost() && allReady && !gameRunning;
+      $startGameBtn.classList.toggle("hidden", !show);
+    }
+
+    function renderNextRoundBtn(phase) {
+      const isRoundDone = phase === "round_complete";
+      const soloCanTrigger =
+        currentRoomState && currentRoomState.players.length === 1
+        && myPlayerId && currentRoomState.players[0].player_id === myPlayerId;
+      const show = isRoundDone && (soloCanTrigger || iAmHost());
+      $nextRoundBtn.classList.toggle("hidden", !show);
+    }
+
+    function renderCard(cardStr) {
+      // cardStr format: "<Rank> of <Suit>" e.g. "Jack of Hearts", "10 of Spades"
+      const parts = cardStr.split(" of ");
+      const rank = parts[0];
+      const suit = parts[1] || "";
+      const glyph = { Hearts: "♥", Diamonds: "♦", Clubs: "♣", Spades: "♠" }[suit] || "?";
+      const red = suit === "Hearts" || suit === "Diamonds";
+      const shortRank = { Jack: "J", Queen: "Q", King: "K", Ace: "A" }[rank] || rank;
+      return `<div class="card ${red ? "red" : ""}">${shortRank}${glyph}</div>`;
+    }
+
+    function renderCardBack() {
+      return `<div class="card back">?</div>`;
     }
   </script>
 </body>

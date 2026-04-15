@@ -3,8 +3,11 @@ import os
 
 class ChatGPTClient:
     def __init__(self):
-        api_key = os.getenv("CHATGPT")
+        api_key = os.getenv("CHATGPT") or os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("Missing OpenAI API key: set CHATGPT or OPENAI_API_KEY.")
         self.client = OpenAI(api_key=api_key)
+        self.request_timeout_seconds = 12
 
     def ask(self, query: str) -> str:
         response = self.client.chat.completions.create(
@@ -13,7 +16,8 @@ class ChatGPTClient:
 		 {"role": "system", "content": "Answer in 1-2 concise sentences. You are a friend helping someone decide their plays in blackjack."},
 		 {"role": "user", "content": query}
             ],
-	    max_tokens=60
+	    max_tokens=60,
+	    timeout=self.request_timeout_seconds,
         )
 
         return response.choices[0].message.content

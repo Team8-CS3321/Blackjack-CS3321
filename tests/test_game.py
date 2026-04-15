@@ -94,6 +94,51 @@ def test_get_game_state_returns_expected_structure():
     assert len(state["players"]) == 2
 
 
+def test_add_player_registers_player_in_active_game():
+    room_game = GameManager().create_game("ROOM1", sample_players())
+
+    result = room_game.add_player("p3", "Carol", "sid3")
+
+    assert result["success"] is True
+    assert "p3" in room_game.player_objects
+    assert room_game.players_dict["p3"]["username"] == "Carol"
+    assert room_game.players_dict["p3"]["id"] == "sid3"
+    assert len(room_game.game.players) == 3
+
+
+def test_add_player_ignores_duplicate_player_id():
+    room_game = GameManager().create_game("ROOM1", sample_players())
+
+    room_game.add_player("p3", "Carol", "sid3")
+    second = room_game.add_player("p3", "Carol", "sid3")
+
+    assert second["success"] is True
+    assert len(room_game.game.players) == 3
+
+
+def test_remove_player_removes_game_membership_and_bet_tracking():
+    room_game = GameManager().create_game("ROOM1", sample_players())
+    room_game.add_player("p3", "Carol", "sid3")
+    room_game.place_bet("p3", 50)
+
+    result = room_game.remove_player("p3")
+
+    assert result["success"] is True
+    assert "p3" not in room_game.player_objects
+    assert "p3" not in room_game.players_dict
+    assert "p3" not in room_game.player_bets
+    assert len(room_game.game.players) == 2
+
+
+def test_remove_player_is_noop_for_unknown_player():
+    room_game = GameManager().create_game("ROOM1", sample_players())
+
+    result = room_game.remove_player("missing")
+
+    assert result["success"] is True
+    assert len(room_game.game.players) == 2
+
+
 def test_stand_in_wrong_phase_returns_error():
     room_game = GameManager().create_game("ROOM1", sample_players())
 

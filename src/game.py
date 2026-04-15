@@ -89,6 +89,33 @@ class RoomGame:
         
         self.player_bets[player_id] = amount
         return {"success": True, "message": f"Bet placed: {amount}"}
+
+    def add_player(self, player_id: str, username: str, sid: Optional[str] = None) -> dict:
+        """Add a player to the game state if they are not already present."""
+        if player_id in self.player_objects:
+            return {"success": True, "message": "Player already in game."}
+
+        player = Player(username)
+        self.player_objects[player_id] = player
+        self.players_dict[player_id] = {"username": username, "id": sid or ""}
+        self.game.add_player(player)
+        return {"success": True, "message": "Player added to game."}
+
+    def remove_player(self, player_id: str) -> dict:
+        """Remove a player from game state if they are currently registered."""
+        player = self.player_objects.pop(player_id, None)
+        if not player:
+            return {"success": True, "message": "Player not in game."}
+
+        self.players_dict.pop(player_id, None)
+        self.player_bets.pop(player_id, None)
+        if player in self.game.players:
+            self.game.remove_player(player)
+
+        if self.current_player_index >= len(self.game.players):
+            self.current_player_index = 0
+
+        return {"success": True, "message": "Player removed from game."}
     
     def hit(self, player_id: str) -> dict:
         """Player hits."""
@@ -141,6 +168,29 @@ class RoomGame:
             "dealer_value": self.game.get_dealer_hand_value(),
         }
     
+    def reset_for_next_round(self, new_players: list[dict] | None = None) -> None:
+        """Reset for a new round, preserving player_objects insertion order.
+
+        new_players: list of {player_id, username} for spectators to promote
+        into active players. Appended at the end so existing turn order is
+        preserved. current_player_index resets to 0 so it always points at
+        an existing player, never into the newly-added tail.
+        """
+        # Promote any pending spectators into real players BEFORE reset_round
+        # so their hands get cleared like everyone else's. We use the existing
+        # Game.add_player helper rather than touching self.game.players directly.
+        if new_players:
+            for np in new_players:
+                pid = np["player_id"]
+                self.add_player(pid, np["username"], np.get("sid"))
+
+        self.game.reset_round()
+        for player_obj in self.player_objects.values():
+            player_obj.bet = 0
+        self.player_bets.clear()
+        self.current_player_index = 0
+        self.phase = GamePhase.WAITING_FOR_BETS
+
     def get_game_state(self) -> dict:
         """Get current game state for broadcasting."""
         player_states = []

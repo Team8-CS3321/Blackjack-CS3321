@@ -2,31 +2,20 @@ import os
 import secrets
 import time
 import uuid
-<<<<<<< HEAD
+import asyncio
 from ChatGPTClient import ChatGPTClient
-=======
->>>>>>> 768288035c487b67c89b81de6b73ebdd4210d847
 
 from quart import Quart, send_from_directory, jsonify
 import socketio
-from game import GameManager
+from game import GameManager, GamePhase
 from pathlib import Path
 
-<<<<<<< HEAD
-
-
 # ── ChatGPT Client ────────────────────────────────────────────────────
-chat = ChatGPTClient()
-
-# Example usage of ChatGPTClient
-#reply = chat.example()
-#print(reply)
-
-
-
-
-=======
->>>>>>> 768288035c487b67c89b81de6b73ebdd4210d847
+try:
+    chat = ChatGPTClient()
+except Exception as e:
+    print(f"[warn] ChatGPTClient init failed: {e}")
+    chat = None
 # ── App setup ────────────────────────────────────────────────────────
 app = Quart(
     __name__,
@@ -49,6 +38,11 @@ player_rooms: dict[str, str] = {}
 # Track player info per sid
 player_info: dict[str, dict] = {}
 
+# Track AI helper usage per socket id to prevent request spam.
+ai_help_last_request_at: dict[str, float] = {}
+ai_help_in_flight: set[str] = set()
+AI_HELP_COOLDOWN_SECONDS = 3.0
+
 # Characters for room codes (no ambiguous chars)
 ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
@@ -68,11 +62,17 @@ def get_room_state(room: dict) -> dict:
     return {
         "code": room["code"],
         "players": [
-            {"id": p["id"], "username": p["username"], "ready": p["ready"]}
+            {
+                "id": p["id"],
+                "username": p["username"],
+                "ready": p["ready"],
+                "player_id": p["player_id"],
+            }
             for p in room["players"]
         ],
         "hostId": room["host_id"],
         "gameStarted": room["game_started"],
+        "singleplayerOrigin": room.get("singleplayer_origin", False),
     }
 
 
@@ -92,6 +92,12 @@ def normalize_chat_message(message) -> str:
     if not isinstance(message, str):
         return ""
     return message.strip()[:200]
+
+
+def normalize_ai_query(query) -> str:
+    if not isinstance(query, str):
+        return ""
+    return query.strip()[:300]
 
 
 def room_has_username(room: dict, username: str) -> bool:
@@ -165,7 +171,7 @@ async def room_create(sid, payload=None):
 
     print(f"[room:create] {normalized_username} created room {code}")
     await broadcast_room_update(code)
-    return {"success": True, "code": code}
+    return {"success": True, "code": code, "player_id": player["player_id"]}
 
 
 @sio.on("room:join")
@@ -193,8 +199,6 @@ async def room_join(sid, payload=None):
 
     if not room:
         return {"error": f'Room "{room_code}" not found.'}
-    if room["game_started"]:
-        return {"error": "Game already in progress."}
     if len(room["players"]) >= 6:
         return {"error": "Room is full (max 6 players)."}
     if room_has_username(room, normalized_username):
@@ -210,16 +214,39 @@ async def room_join(sid, payload=None):
     await sio.enter_room(sid, room_code)
     player_rooms[sid] = room_code
 
-    print(f"[room:join] {normalized_username} joined room {room_code}")
+    # If a game exists and is waiting for bets, add the player directly so they
+    # can place a bet immediately. In all other active phases, queue them as a
+    # spectator to join on next round reset.
+    game = game_manager.get_game(room_code)
+    is_spectator = False
+    if game and game.phase == GamePhase.WAITING_FOR_BETS:
+        game.add_player(player["player_id"], normalized_username, sid)
+        await sio.emit("game:state", game.get_game_state(), room=room_code)
+    elif game:
+        is_spectator = True
+        room.setdefault("pending_players", []).append(
+            {
+                "player_id": player["player_id"],
+                "username": normalized_username,
+                "sid": sid,
+            }
+        )
+
+    print(f"[room:join] {normalized_username} joined room {room_code}{' (spectator)' if is_spectator else ''}")
 
     await sio.emit(
         "room:player-joined",
-        {"username": normalized_username},
+        {"username": normalized_username, "spectator": is_spectator},
         room=room_code,
         skip_sid=sid,
     )
     await broadcast_room_update(room_code)
-    return {"success": True, "code": room_code}
+
+    # Spectator gets a snapshot of the in-flight game so the table renders for them.
+    if is_spectator and game:
+        await sio.emit("game:state", game.get_game_state(), to=sid)
+
+    return {"success": True, "code": room_code, "player_id": player["player_id"], "spectator": is_spectator}
 
 
 @sio.on("player:ready")
@@ -270,6 +297,70 @@ async def chat_message(sid, payload=None):
     )
 
 
+@sio.on("ai:help")
+async def ai_help(sid, payload=None):
+    payload = payload or {}
+    if not isinstance(payload, dict):
+        return {"error": "Invalid payload."}
+
+    current_room = player_rooms.get(sid)
+    if not current_room:
+        return {"error": "Not in a room."}
+
+    room = rooms.get(current_room)
+    if not room:
+        return {"error": "Room not found."}
+
+    player = next((p for p in room["players"] if p["id"] == sid), None)
+    if not player:
+        return {"error": "Player not found."}
+
+    if chat is None:
+        return {"error": "AI helper is unavailable. Set CHATGPT env var and restart server."}
+
+    if sid in ai_help_in_flight:
+        return {"error": "AI helper is already processing your request."}
+
+    now = time.monotonic()
+    last_request_at = ai_help_last_request_at.get(sid)
+    if last_request_at is not None and (now - last_request_at) < AI_HELP_COOLDOWN_SECONDS:
+        return {"error": "Please wait a few seconds before asking AI again."}
+
+    ai_help_last_request_at[sid] = now
+    ai_help_in_flight.add(sid)
+
+    raw_query = payload.get("query", "")
+    normalized_query = normalize_ai_query(raw_query)
+    if not normalized_query:
+        normalized_query = (
+            "Give me a quick blackjack help summary: core rules, best basic strategy "
+            "for beginners, and one common mistake to avoid."
+        )
+
+    prompt = (
+        f"Player '{player['username']}' asks: {normalized_query}. "
+        "Answer in plain language for in-game help."
+    )
+
+    try:
+        ai_message = await asyncio.wait_for(
+            asyncio.to_thread(chat.ask, prompt),
+            timeout=14,
+        )
+    except asyncio.TimeoutError:
+        return {"error": "AI helper timed out. Please try a shorter question."}
+    except Exception as e:
+        print(f"[ai:help] error: {e}")
+        return {"error": "AI helper failed. Try again in a moment."}
+    finally:
+        ai_help_in_flight.discard(sid)
+
+    if not isinstance(ai_message, str) or not ai_message.strip():
+        return {"error": "AI helper returned an empty response."}
+
+    return {"success": True, "message": ai_message.strip()}
+
+
 @sio.on("room:leave")
 async def room_leave(sid, *args):
     await leave_room(sid)
@@ -280,26 +371,72 @@ async def disconnect(sid):
     print(f"[disconnect] {sid}")
     await leave_room(sid)
     player_info.pop(sid, None)
+    ai_help_last_request_at.pop(sid, None)
+    ai_help_in_flight.discard(sid)
 
 
 async def leave_room(sid: str) -> None:
+    ai_help_last_request_at.pop(sid, None)
+    ai_help_in_flight.discard(sid)
+
     current_room = player_rooms.get(sid)
     if not current_room:
         return
     room = rooms.get(current_room)
     if not room:
         return
+    game = game_manager.get_game(current_room)
 
     leaving_player = next(
         (p for p in room["players"] if p["id"] == sid), None
     )
+
+    removed_from_game = False
+    advanced_after_disconnect = False
+    if game and leaving_player:
+        leaving_player_id = leaving_player["player_id"]
+        removable_phases = (GamePhase.WAITING_FOR_BETS, GamePhase.ROUND_COMPLETE)
+        if game.phase in removable_phases:
+            game.remove_player(leaving_player_id)
+            removed_from_game = True
+        else:
+            pending_removals = room.setdefault("pending_removals", [])
+            if not any(p.get("player_id") == leaving_player_id for p in pending_removals):
+                pending_removals.append(
+                    {
+                        "player_id": leaving_player_id,
+                        "username": leaving_player["username"],
+                    }
+                )
+
+            # During active dealing/playing phases, mark disconnected players as
+            # standing so turn order can continue without manual intervention.
+            if game.phase in (GamePhase.DEALING, GamePhase.PLAYING):
+                leaving_player_obj = game.player_objects.get(leaving_player_id)
+                if leaving_player_obj and not leaving_player_obj.is_stand:
+                    leaving_player_obj.stand()
+                    if game.phase == GamePhase.PLAYING:
+                        player_ids = list(game.player_objects.keys())
+                        if (
+                            game.current_player_index < len(player_ids)
+                            and player_ids[game.current_player_index] == leaving_player_id
+                        ):
+                            result = game.advance_to_next_player()
+                            await sio.emit("game:state", result, room=current_room)
+                            advanced_after_disconnect = True
+
     room["players"] = [p for p in room["players"] if p["id"] != sid]
+    if "pending_players" in room:
+        room["pending_players"] = [
+            pp for pp in room["pending_players"] if pp.get("sid") != sid
+        ]
     await sio.leave_room(sid, current_room)
 
     left_room = current_room
     player_rooms.pop(sid, None)
 
     if len(room["players"]) == 0:
+        game_manager.end_game(left_room)
         del rooms[left_room]
         print(f"[room:delete] room {left_room} is now empty")
     else:
@@ -317,6 +454,18 @@ async def leave_room(sid: str) -> None:
                 {"username": room["players"][0]["username"]},
                 room=left_room,
             )
+        if removed_from_game and game:
+            if (
+                game.phase == GamePhase.WAITING_FOR_BETS
+                and len(game.players_dict) > 0
+                and len(game.player_bets) == len(game.players_dict)
+            ):
+                start_result = game.start_round()
+                await sio.emit("game:round-started", start_result, room=left_room)
+            else:
+                await sio.emit("game:state", game.get_game_state(), room=left_room)
+        elif game and not advanced_after_disconnect and game.phase in (GamePhase.DEALING, GamePhase.PLAYING):
+            await sio.emit("game:state", game.get_game_state(), room=left_room)
         await broadcast_room_update(left_room)
 
 
@@ -339,6 +488,8 @@ async def game_start(sid, *args):
     
     if len(room["players"]) < 1:
         return {"error": "Need at least 1 player."}
+    if not all(p["ready"] for p in room["players"]):
+        return {"error": "All players must be ready."}
     
     # Create game
     players_dict = {p["player_id"]: {"username": p["username"], "id": p["id"]} for p in room["players"]}
@@ -431,12 +582,108 @@ async def game_get_state(sid, *args):
     current_room = player_rooms.get(sid)
     if not current_room:
         return {"error": "Not in a room."}
-    
+
     game = game_manager.get_game(current_room)
     if not game:
         return {"error": "No active game."}
-    
+
     return game.get_game_state()
+
+
+@sio.on("game:next-round")
+async def game_next_round(sid, *args):
+    """Reset the game for the next round. Host-only in multiplayer; sole player in singleplayer."""
+    current_room = player_rooms.get(sid)
+    if not current_room:
+        return {"error": "Not in a room."}
+
+    room = rooms.get(current_room)
+    if not room:
+        return {"error": "Room not found."}
+
+    game = game_manager.get_game(current_room)
+    if not game:
+        return {"error": "No active game."}
+
+    if game.phase != GamePhase.ROUND_COMPLETE:
+        return {"error": "Round not complete yet."}
+
+    if len(room["players"]) == 1:
+        if sid != room["players"][0]["id"]:
+            return {"error": "Not authorized."}
+    else:
+        if sid != room["host_id"]:
+            return {"error": "Only host can start next round."}
+
+    pending_removals = room.pop("pending_removals", [])
+    for pending_removal in pending_removals:
+        player_id = pending_removal.get("player_id")
+        if player_id:
+            game.remove_player(player_id)
+
+    pending = room.pop("pending_players", [])
+    game.reset_for_next_round(pending)
+    await sio.emit("game:state", game.get_game_state(), room=current_room)
+    await broadcast_room_update(current_room)
+    return {"success": True}
+
+
+@sio.on("singleplayer:start")
+async def singleplayer_start(sid, payload=None):
+    """Create a private 1-player room and start the game atomically."""
+    payload = payload or {}
+
+    if sid in player_rooms:
+        return {"error": "You are already in a room. Leave first."}
+
+    if sid not in player_info:
+        return {"error": "Not connected."}
+
+    normalized_username = normalize_username(payload.get("username", ""))
+    if not normalized_username:
+        return {"error": "Username is required."}
+
+    code = generate_room_code()
+    player_id = player_info[sid]["player_id"]
+    player = {
+        "id": sid,
+        "username": normalized_username,
+        "player_id": player_id,
+        "ready": True,
+    }
+
+    # Singleplayer rooms are structurally identical to multiplayer rooms.
+    # The only difference is singleplayer_origin=True, which is a UI hint so
+    # the frontend hides the room code until the host explicitly shares it.
+    # A friend can still join via room:join with the code.
+    room = {
+        "code": code,
+        "host_id": sid,
+        "players": [player],
+        "game_started": True,
+        "singleplayer_origin": True,
+    }
+    rooms[code] = room
+    await sio.enter_room(sid, code)
+    player_rooms[sid] = code
+
+    players_dict = {player_id: {"username": normalized_username, "id": sid}}
+    game = game_manager.create_game(code, players_dict)
+
+    print(f"[singleplayer:start] {normalized_username} started solo room {code}")
+
+    await broadcast_room_update(code)
+    await sio.emit(
+        "singleplayer:ready",
+        {
+            "code": code,
+            "player_id": player_id,
+            "room": get_room_state(room),
+            "state": game.get_game_state(),
+        },
+        to=sid,
+    )
+    return {"success": True, "code": code, "player_id": player_id}
 
 
 # ── Start server ─────────────────────────────────────────────────────
