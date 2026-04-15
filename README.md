@@ -6,16 +6,16 @@
 
 ```bash
 # Create virtual environment (one-time)
-<<<<<<< HEAD
+
 python -m venv venv
 =======
 py -m venv venv
->>>>>>> 768288035c487b67c89b81de6b73ebdd4210d847
+
 
 # Install dependencies
 venv/Scripts/pip install -r requirements.txt
 
-<<<<<<< HEAD
+
 # Login to doppler for team secrets
 doppler login
 
@@ -24,7 +24,7 @@ doppler run -- venv/Scripts/python src/app.py
 =======
 # Run the server
 venv/Scripts/python app.py
->>>>>>> 768288035c487b67c89b81de6b73ebdd4210d847
+
 
 # Open in browser
 # http://localhost:3000
@@ -40,7 +40,6 @@ venv/Scripts/python app.py
 | `requirements.txt` | Dependencies: `quart`, `python-socketio`, `uvicorn`, `openai` |
 =======
 | `requirements.txt` | Dependencies: `quart`, `python-socketio`, `uvicorn` |
->>>>>>> 768288035c487b67c89b81de6b73ebdd4210d847
 
 ## How It Works
 
