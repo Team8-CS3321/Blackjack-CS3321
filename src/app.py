@@ -2,6 +2,7 @@ import os
 import secrets
 import time
 import uuid
+import asyncio
 from ChatGPTClient import ChatGPTClient
 
 from quart import Quart, send_from_directory, jsonify
@@ -40,6 +41,11 @@ player_rooms: dict[str, str] = {}
 # Track player info per sid
 player_info: dict[str, dict] = {}
 
+# Track AI helper usage per socket id to prevent request spam.
+ai_help_last_request_at: dict[str, float] = {}
+ai_help_in_flight: set[str] = set()
+AI_HELP_COOLDOWN_SECONDS = 3.0
+
 # Characters for room codes (no ambiguous chars)
 ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
@@ -59,11 +65,17 @@ def get_room_state(room: dict) -> dict:
     return {
         "code": room["code"],
         "players": [
-            {"id": p["id"], "username": p["username"], "ready": p["ready"]}
+            {
+                "id": p["id"],
+                "username": p["username"],
+                "ready": p["ready"],
+                "player_id": p["player_id"],
+            }
             for p in room["players"]
         ],
         "hostId": room["host_id"],
         "gameStarted": room["game_started"],
+        "singleplayerOrigin": room.get("singleplayer_origin", False),
     }
 
 
@@ -83,6 +95,12 @@ def normalize_chat_message(message) -> str:
     if not isinstance(message, str):
         return ""
     return message.strip()[:200]
+
+
+def normalize_ai_query(query) -> str:
+    if not isinstance(query, str):
+        return ""
+    return query.strip()[:300]
 
 
 def room_has_username(room: dict, username: str) -> bool:
@@ -184,8 +202,6 @@ async def room_join(sid, payload=None):
 
     if not room:
         return {"error": f'Room "{room_code}" not found.'}
-    if room["game_started"]:
-        return {"error": "Game already in progress."}
     if len(room["players"]) >= 6:
         return {"error": "Room is full (max 6 players)."}
     if room_has_username(room, normalized_username):
@@ -201,16 +217,37 @@ async def room_join(sid, payload=None):
     await sio.enter_room(sid, room_code)
     player_rooms[sid] = room_code
 
-    print(f"[room:join] {normalized_username} joined room {room_code}")
+    # Mid-round join: if a round is in flight, add to pending_players. They will
+    # be promoted into active players by reset_for_next_round on the next round.
+    # Using a pending list (rather than flagging player_objects mid-round) keeps
+    # the current round's turn order and player_objects insertion order intact.
+    game = game_manager.get_game(room_code)
+    mid_round_phases = (GamePhase.DEALING, GamePhase.PLAYING, GamePhase.DEALER_TURN)
+    is_spectator = bool(game and game.phase in mid_round_phases)
+    if is_spectator:
+        room.setdefault("pending_players", []).append(
+            {
+                "player_id": player["player_id"],
+                "username": normalized_username,
+                "sid": sid,
+            }
+        )
+
+    print(f"[room:join] {normalized_username} joined room {room_code}{' (spectator)' if is_spectator else ''}")
 
     await sio.emit(
         "room:player-joined",
-        {"username": normalized_username},
+        {"username": normalized_username, "spectator": is_spectator},
         room=room_code,
         skip_sid=sid,
     )
     await broadcast_room_update(room_code)
-    return {"success": True, "code": room_code, "player_id": player["player_id"]}
+
+    # Spectator gets a snapshot of the in-flight game so the table renders for them.
+    if is_spectator and game:
+        await sio.emit("game:state", game.get_game_state(), to=sid)
+
+    return {"success": True, "code": room_code, "player_id": player["player_id"], "spectator": is_spectator}
 
 
 @sio.on("player:ready")
@@ -261,6 +298,70 @@ async def chat_message(sid, payload=None):
     )
 
 
+@sio.on("ai:help")
+async def ai_help(sid, payload=None):
+    payload = payload or {}
+    if not isinstance(payload, dict):
+        return {"error": "Invalid payload."}
+
+    current_room = player_rooms.get(sid)
+    if not current_room:
+        return {"error": "Not in a room."}
+
+    room = rooms.get(current_room)
+    if not room:
+        return {"error": "Room not found."}
+
+    player = next((p for p in room["players"] if p["id"] == sid), None)
+    if not player:
+        return {"error": "Player not found."}
+
+    if chat is None:
+        return {"error": "AI helper is unavailable. Set CHATGPT env var and restart server."}
+
+    if sid in ai_help_in_flight:
+        return {"error": "AI helper is already processing your request."}
+
+    now = time.monotonic()
+    last_request_at = ai_help_last_request_at.get(sid)
+    if last_request_at is not None and (now - last_request_at) < AI_HELP_COOLDOWN_SECONDS:
+        return {"error": "Please wait a few seconds before asking AI again."}
+
+    ai_help_last_request_at[sid] = now
+    ai_help_in_flight.add(sid)
+
+    raw_query = payload.get("query", "")
+    normalized_query = normalize_ai_query(raw_query)
+    if not normalized_query:
+        normalized_query = (
+            "Give me a quick blackjack help summary: core rules, best basic strategy "
+            "for beginners, and one common mistake to avoid."
+        )
+
+    prompt = (
+        f"Player '{player['username']}' asks: {normalized_query}. "
+        "Answer in plain language for in-game help."
+    )
+
+    try:
+        ai_message = await asyncio.wait_for(
+            asyncio.to_thread(chat.ask, prompt),
+            timeout=14,
+        )
+    except asyncio.TimeoutError:
+        return {"error": "AI helper timed out. Please try a shorter question."}
+    except Exception as e:
+        print(f"[ai:help] error: {e}")
+        return {"error": "AI helper failed. Try again in a moment."}
+    finally:
+        ai_help_in_flight.discard(sid)
+
+    if not isinstance(ai_message, str) or not ai_message.strip():
+        return {"error": "AI helper returned an empty response."}
+
+    return {"success": True, "message": ai_message.strip()}
+
+
 @sio.on("room:leave")
 async def room_leave(sid, *args):
     await leave_room(sid)
@@ -271,9 +372,14 @@ async def disconnect(sid):
     print(f"[disconnect] {sid}")
     await leave_room(sid)
     player_info.pop(sid, None)
+    ai_help_last_request_at.pop(sid, None)
+    ai_help_in_flight.discard(sid)
 
 
 async def leave_room(sid: str) -> None:
+    ai_help_last_request_at.pop(sid, None)
+    ai_help_in_flight.discard(sid)
+
     current_room = player_rooms.get(sid)
     if not current_room:
         return
@@ -285,6 +391,10 @@ async def leave_room(sid: str) -> None:
         (p for p in room["players"] if p["id"] == sid), None
     )
     room["players"] = [p for p in room["players"] if p["id"] != sid]
+    if "pending_players" in room:
+        room["pending_players"] = [
+            pp for pp in room["pending_players"] if pp.get("sid") != sid
+        ]
     await sio.leave_room(sid, current_room)
 
     left_room = current_room
@@ -457,8 +567,10 @@ async def game_next_round(sid, *args):
         if sid != room["host_id"]:
             return {"error": "Only host can start next round."}
 
-    game.reset_for_next_round()
+    pending = room.pop("pending_players", [])
+    game.reset_for_next_round(pending)
     await sio.emit("game:state", game.get_game_state(), room=current_room)
+    await broadcast_room_update(current_room)
     return {"success": True}
 
 
@@ -486,13 +598,16 @@ async def singleplayer_start(sid, payload=None):
         "ready": True,
     }
 
+    # Singleplayer rooms are structurally identical to multiplayer rooms.
+    # The only difference is singleplayer_origin=True, which is a UI hint so
+    # the frontend hides the room code until the host explicitly shares it.
+    # A friend can still join via room:join with the code.
     room = {
         "code": code,
         "host_id": sid,
         "players": [player],
         "game_started": True,
-        "private": True,
-        "capacity": 1,
+        "singleplayer_origin": True,
     }
     rooms[code] = room
     await sio.enter_room(sid, code)
@@ -503,6 +618,7 @@ async def singleplayer_start(sid, payload=None):
 
     print(f"[singleplayer:start] {normalized_username} started solo room {code}")
 
+    await broadcast_room_update(code)
     await sio.emit(
         "singleplayer:ready",
         {

@@ -179,6 +179,17 @@
       gap: 8px;
     }
     .chat-input-row input { flex: 1; margin-bottom: 0; }
+    .btn-ai {
+      color: var(--amber);
+      border-color: var(--amber);
+      padding: 8px 12px;
+      font-size: 18px;
+      white-space: nowrap;
+    }
+    .btn-ai:hover:not(:disabled) {
+      background: var(--amber);
+      color: var(--bg);
+    }
 
     .hidden { display: none; }
 
@@ -339,12 +350,15 @@
 
     <!-- ── ROOM SCREEN ──────────────────────── -->
     <div id="room" class="hidden">
-      <div class="panel">
+      <div class="panel" id="roomCodePanel">
         <div class="panel-title">&gt; TABLE CODE</div>
         <div class="room-code" id="roomCodeDisplay"></div>
         <p style="font-size:18px; color:var(--dim-green); margin-top:4px;">
           Share this code with your friends to join.
         </p>
+        <button class="btn btn-amber hidden" id="inviteBtn" onclick="revealInvite()"
+                style="margin-top:8px;">[ INVITE ]</button>
+        <p id="inviteFlash" class="hidden" style="font-size:18px; color:var(--amber); margin-top:6px;"></p>
       </div>
 
       <div class="panel">
@@ -358,6 +372,7 @@
         <div class="chat-input-row">
           <input type="text" id="chatInput" placeholder="type a message..."
                  onkeydown="if(event.key==='Enter')sendChat()" />
+          <button class="btn btn-ai" id="aiHelpBtn" onclick="askAIHelp()">AI HELP</button>
           <button class="btn" onclick="sendChat()">SEND</button>
         </div>
       </div>
@@ -426,6 +441,7 @@
     const $players   = document.getElementById("playerList");
     const $chatBox   = document.getElementById("chatBox");
     const $chatInput = document.getElementById("chatInput");
+    const $aiHelpBtn = document.getElementById("aiHelpBtn");
     const $waitingMsg = document.getElementById("waitingMsg");
 
     const MAX_USERNAME_LENGTH = 16;
@@ -439,6 +455,8 @@
     let lastResults = null;
     let lastDealerFull = null;
     let lastDealerValue = null;
+    let aiHelpTimeoutId = null;
+    let aiHelpRequestToken = 0;
 
     const $gameTable   = document.getElementById("gameTable");
     const $statusMsg   = document.getElementById("statusMsg");
@@ -453,10 +471,19 @@
     const $startGameBtn = document.getElementById("startGameBtn");
     const $nextRoundBtn = document.getElementById("nextRoundBtn");
     const $chipRow     = document.getElementById("chipRow");
+    const $roomCodePanel = document.getElementById("roomCodePanel");
+    const $inviteBtn   = document.getElementById("inviteBtn");
+    const $inviteFlash = document.getElementById("inviteFlash");
 
     // ── Connection lifecycle ──────────────────
     socket.on("disconnect", () => {
       wasDisconnected = true;
+      if (aiHelpTimeoutId !== null) {
+        clearTimeout(aiHelpTimeoutId);
+        aiHelpTimeoutId = null;
+      }
+      $aiHelpBtn.disabled = false;
+      $aiHelpBtn.textContent = "AI HELP";
       if (!$room.classList.contains("hidden")) {
         $room.classList.add("hidden");
         $lobby.classList.remove("hidden");
@@ -546,6 +573,38 @@
       $room.classList.remove("hidden");
       $roomCode.textContent = code;
       $chatInput.value = "";
+      applyRoomCodeVisibility();
+    }
+
+    function applyRoomCodeVisibility() {
+      // In singleplayer-originated rooms, hide the code until host clicks INVITE.
+      // In normal multiplayer rooms, keep the code visible as before.
+      const isSolo = isSinglePlayer;
+      const alone = !currentRoomState || currentRoomState.players.length <= 1;
+      const iAmHost = currentRoomState
+        && myPlayerId
+        && currentRoomState.players.some(
+             (p) => p.id === currentRoomState.hostId && p.player_id === myPlayerId
+           );
+      if (isSolo && alone) {
+        $roomCode.classList.add("hidden");
+        $inviteBtn.classList.toggle("hidden", !iAmHost);
+      } else {
+        $roomCode.classList.remove("hidden");
+        // Once a second player has joined, the invite button is no longer meaningful.
+        $inviteBtn.classList.add("hidden");
+      }
+    }
+
+    function revealInvite() {
+      const code = $roomCode.textContent;
+      $roomCode.classList.remove("hidden");
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(code).catch(() => {});
+      }
+      $inviteFlash.textContent = "> Code copied: " + code;
+      $inviteFlash.classList.remove("hidden");
+      setTimeout(() => $inviteFlash.classList.add("hidden"), 2500);
     }
 
     // ── Room actions ─────────────────────────
@@ -554,6 +613,13 @@
     }
 
     function leaveRoom() {
+      aiHelpRequestToken += 1;
+      if (aiHelpTimeoutId !== null) {
+        clearTimeout(aiHelpTimeoutId);
+        aiHelpTimeoutId = null;
+      }
+      $aiHelpBtn.disabled = false;
+      $aiHelpBtn.textContent = "AI HELP";
       socket.emit("room:leave");
       $room.classList.add("hidden");
       $lobby.classList.remove("hidden");
@@ -571,6 +637,10 @@
       $startGameBtn.classList.add("hidden");
       $nextRoundBtn.classList.add("hidden");
       $results.classList.add("hidden");
+      $inviteBtn.classList.add("hidden");
+      $inviteFlash.classList.add("hidden");
+      $roomCode.classList.remove("hidden");
+      $waitingMsg.classList.remove("hidden");
       renderReadyState();
       renderWaitingText();
     }
@@ -580,6 +650,44 @@
       if (!msg) return;
       socket.emit("chat:message", { message: msg });
       $chatInput.value = "";
+    }
+
+    function askAIHelp() {
+      if ($aiHelpBtn.disabled) return;
+
+      const query = $chatInput.value.trim().slice(0, 300);
+      const requestToken = ++aiHelpRequestToken;
+      $aiHelpBtn.disabled = true;
+      $aiHelpBtn.textContent = "AI...";
+
+      aiHelpTimeoutId = setTimeout(() => {
+        if (requestToken !== aiHelpRequestToken) return;
+        aiHelpTimeoutId = null;
+        $aiHelpBtn.disabled = false;
+        $aiHelpBtn.textContent = "AI HELP";
+        appendChat(null, "AI help: Request timed out. Please try again.");
+      }, 16000);
+
+      socket.emit("ai:help", { query }, (res) => {
+        if (requestToken !== aiHelpRequestToken) return;
+        if (aiHelpTimeoutId !== null) {
+          clearTimeout(aiHelpTimeoutId);
+          aiHelpTimeoutId = null;
+        }
+        $aiHelpBtn.disabled = false;
+        $aiHelpBtn.textContent = "AI HELP";
+
+        if (!res || res.error) {
+          appendChat(null, "AI help: " + ((res && res.error) || "No response from server."));
+          return;
+        }
+
+        if (query) {
+          appendChat(myUsername || "You", "[AI] " + query);
+          $chatInput.value = "";
+        }
+        appendChat("AI Helper", res.message);
+      });
     }
 
     // ── Socket events ────────────────────────
@@ -596,9 +704,16 @@
         })
         .join("");
 
+      // If the server says this was born as singleplayer, remember that
+      // client-side so invite-code visibility stays consistent on refresh.
+      if (state.singleplayerOrigin) isSinglePlayer = true;
+
       renderReadyState();
       renderWaitingText();
       renderStartGameBtn();
+      applyRoomCodeVisibility();
+      // Re-render the table so spectators appear in seats grid immediately.
+      if (currentGameState) renderTable();
     });
 
     socket.on("room:player-joined", ({ username }) => {
@@ -637,6 +752,16 @@
     }
 
     function renderWaitingText() {
+      // Hide the waiting message once the game has started — the table UI
+      // carries its own status line from that point on.
+      const gameRunning =
+        (currentRoomState && currentRoomState.gameStarted) || currentGameState;
+      if (gameRunning) {
+        $waitingMsg.classList.add("hidden");
+        return;
+      }
+      $waitingMsg.classList.remove("hidden");
+
       if (!currentRoomState) {
         $waitingMsg.innerHTML = '<span class="blink">▌</span> Waiting for players...';
         return;
@@ -644,12 +769,11 @@
 
       const total = currentRoomState.players.length;
       const readyCount = currentRoomState.players.filter((p) => p.ready).length;
-      if (total < 2) {
-        $waitingMsg.innerHTML = '<span class="blink">▌</span> Waiting for at least 2 players...';
+      if (readyCount < total) {
+        $waitingMsg.innerHTML = `<span class="blink">▌</span> Waiting for players to ready up... (${readyCount}/${total})`;
         return;
       }
-
-      $waitingMsg.innerHTML = `<span class="blink">▌</span> Players ready: ${readyCount}/${total}`;
+      $waitingMsg.innerHTML = `<span class="blink">▌</span> All ready (${readyCount}/${total}). Host can start.`;
     }
 
     function escapeHtml(str) {
@@ -659,9 +783,12 @@
     }
 
     // ── Game / table wiring ──────────────────────
-    socket.on("singleplayer:ready", ({ state }) => {
+    socket.on("singleplayer:ready", ({ code, player_id, state }) => {
       isSinglePlayer = true;
+      if (player_id) myPlayerId = player_id;
+      if (code) enterRoom(code);
       $gameTable.classList.remove("hidden");
+      $waitingMsg.classList.add("hidden");
       if (state) applyGameState(state);
     });
 
@@ -779,7 +906,20 @@
       }
       $dealerHand.innerHTML = dealerCards;
 
-      // Seats
+      // Seats (active players from game state, spectators from room state)
+      const seatedIds = new Set(players.map((p) => p.player_id));
+      const spectators = (currentRoomState && currentRoomState.players || [])
+        .filter((rp) => rp.player_id && !seatedIds.has(rp.player_id));
+      const spectatorHTML = spectators.map((sp) => {
+        const isMe = sp.player_id === myPlayerId;
+        return `
+          <div class="seat">
+            <div class="seat-name">♠ ${escapeHtml(sp.username)}${isMe ? ' (YOU)' : ''}</div>
+            <div class="seat-status">SPECTATING — joins next round</div>
+          </div>
+        `;
+      }).join("");
+
       $seats.innerHTML = players.map((p, i) => {
         const classes = ["seat"];
         if (i === activeIndex && phase === "playing") classes.push("active");
@@ -796,7 +936,7 @@
             <div class="seat-status ${status.cls}">${escapeHtml(status.text)}</div>
           </div>
         `;
-      }).join("");
+      }).join("") + spectatorHTML;
 
       // Status line
       $statusMsg.textContent = phaseStatusText(phase, players, activeIndex);
@@ -865,23 +1005,30 @@
       $standBtn.disabled = !isMyTurn;
     }
 
+    function iAmHost() {
+      if (!currentRoomState || !myPlayerId) return false;
+      return currentRoomState.players.some(
+        (p) => p.id === currentRoomState.hostId && p.player_id === myPlayerId
+      );
+    }
+
     function renderStartGameBtn() {
       if (!currentRoomState) {
         $startGameBtn.classList.add("hidden");
         return;
       }
-      const iAmHost = currentRoomState.players.find((p) => p.id === currentRoomState.hostId && p.username === myUsername);
       const allReady = currentRoomState.players.length >= 1 && currentRoomState.players.every((p) => p.ready);
       const gameRunning = currentRoomState.gameStarted || (currentGameState && currentGameState.phase);
-      const show = iAmHost && allReady && !gameRunning && !isSinglePlayer;
+      const show = iAmHost() && allReady && !gameRunning;
       $startGameBtn.classList.toggle("hidden", !show);
     }
 
     function renderNextRoundBtn(phase) {
       const isRoundDone = phase === "round_complete";
-      const soloCanTrigger = isSinglePlayer;
-      const iAmHost = currentRoomState && currentRoomState.players.find((p) => p.id === currentRoomState.hostId && p.username === myUsername);
-      const show = isRoundDone && (soloCanTrigger || iAmHost);
+      const soloCanTrigger =
+        currentRoomState && currentRoomState.players.length === 1
+        && myPlayerId && currentRoomState.players[0].player_id === myPlayerId;
+      const show = isRoundDone && (soloCanTrigger || iAmHost());
       $nextRoundBtn.classList.toggle("hidden", !show);
     }
 

@@ -141,8 +141,26 @@ class RoomGame:
             "dealer_value": self.game.get_dealer_hand_value(),
         }
     
-    def reset_for_next_round(self) -> None:
-        """Reset for a new round, preserving player_objects insertion order."""
+    def reset_for_next_round(self, new_players: list[dict] | None = None) -> None:
+        """Reset for a new round, preserving player_objects insertion order.
+
+        new_players: list of {player_id, username} for spectators to promote
+        into active players. Appended at the end so existing turn order is
+        preserved. current_player_index resets to 0 so it always points at
+        an existing player, never into the newly-added tail.
+        """
+        # Promote any pending spectators into real players BEFORE reset_round
+        # so their hands get cleared like everyone else's. We use the existing
+        # Game.add_player helper rather than touching self.game.players directly.
+        if new_players:
+            for np in new_players:
+                pid = np["player_id"]
+                if pid in self.player_objects:
+                    continue
+                player = Player(np["username"])
+                self.player_objects[pid] = player
+                self.game.add_player(player)
+
         self.game.reset_round()
         for player_obj in self.player_objects.values():
             player_obj.bet = 0
