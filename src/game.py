@@ -89,6 +89,33 @@ class RoomGame:
         
         self.player_bets[player_id] = amount
         return {"success": True, "message": f"Bet placed: {amount}"}
+
+    def add_player(self, player_id: str, username: str, sid: Optional[str] = None) -> dict:
+        """Add a player to the game state if they are not already present."""
+        if player_id in self.player_objects:
+            return {"success": True, "message": "Player already in game."}
+
+        player = Player(username)
+        self.player_objects[player_id] = player
+        self.players_dict[player_id] = {"username": username, "id": sid or ""}
+        self.game.add_player(player)
+        return {"success": True, "message": "Player added to game."}
+
+    def remove_player(self, player_id: str) -> dict:
+        """Remove a player from game state if they are currently registered."""
+        player = self.player_objects.pop(player_id, None)
+        if not player:
+            return {"success": True, "message": "Player not in game."}
+
+        self.players_dict.pop(player_id, None)
+        self.player_bets.pop(player_id, None)
+        if player in self.game.players:
+            self.game.remove_player(player)
+
+        if self.current_player_index >= len(self.game.players):
+            self.current_player_index = 0
+
+        return {"success": True, "message": "Player removed from game."}
     
     def hit(self, player_id: str) -> dict:
         """Player hits."""
@@ -155,11 +182,7 @@ class RoomGame:
         if new_players:
             for np in new_players:
                 pid = np["player_id"]
-                if pid in self.player_objects:
-                    continue
-                player = Player(np["username"])
-                self.player_objects[pid] = player
-                self.game.add_player(player)
+                self.add_player(pid, np["username"], np.get("sid"))
 
         self.game.reset_round()
         for player_obj in self.player_objects.values():

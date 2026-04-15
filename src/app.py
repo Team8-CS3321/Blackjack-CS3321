@@ -214,14 +214,16 @@ async def room_join(sid, payload=None):
     await sio.enter_room(sid, room_code)
     player_rooms[sid] = room_code
 
-    # Mid-round join: if a round is in flight, add to pending_players. They will
-    # be promoted into active players by reset_for_next_round on the next round.
-    # Using a pending list (rather than flagging player_objects mid-round) keeps
-    # the current round's turn order and player_objects insertion order intact.
+    # If a game exists and is waiting for bets, add the player directly so they
+    # can place a bet immediately. In all other active phases, queue them as a
+    # spectator to join on next round reset.
     game = game_manager.get_game(room_code)
-    mid_round_phases = (GamePhase.DEALING, GamePhase.PLAYING, GamePhase.DEALER_TURN)
-    is_spectator = bool(game and game.phase in mid_round_phases)
-    if is_spectator:
+    is_spectator = False
+    if game and game.phase == GamePhase.WAITING_FOR_BETS:
+        game.add_player(player["player_id"], normalized_username, sid)
+        await sio.emit("game:state", game.get_game_state(), room=room_code)
+    elif game:
+        is_spectator = True
         room.setdefault("pending_players", []).append(
             {
                 "player_id": player["player_id"],
@@ -383,10 +385,46 @@ async def leave_room(sid: str) -> None:
     room = rooms.get(current_room)
     if not room:
         return
+    game = game_manager.get_game(current_room)
 
     leaving_player = next(
         (p for p in room["players"] if p["id"] == sid), None
     )
+
+    removed_from_game = False
+    advanced_after_disconnect = False
+    if game and leaving_player:
+        leaving_player_id = leaving_player["player_id"]
+        removable_phases = (GamePhase.WAITING_FOR_BETS, GamePhase.ROUND_COMPLETE)
+        if game.phase in removable_phases:
+            game.remove_player(leaving_player_id)
+            removed_from_game = True
+        else:
+            pending_removals = room.setdefault("pending_removals", [])
+            if not any(p.get("player_id") == leaving_player_id for p in pending_removals):
+                pending_removals.append(
+                    {
+                        "player_id": leaving_player_id,
+                        "username": leaving_player["username"],
+                    }
+                )
+
+            # During active dealing/playing phases, mark disconnected players as
+            # standing so turn order can continue without manual intervention.
+            if game.phase in (GamePhase.DEALING, GamePhase.PLAYING):
+                leaving_player_obj = game.player_objects.get(leaving_player_id)
+                if leaving_player_obj and not leaving_player_obj.is_stand:
+                    leaving_player_obj.stand()
+                    if game.phase == GamePhase.PLAYING:
+                        player_ids = list(game.player_objects.keys())
+                        if (
+                            game.current_player_index < len(player_ids)
+                            and player_ids[game.current_player_index] == leaving_player_id
+                        ):
+                            result = game.advance_to_next_player()
+                            await sio.emit("game:state", result, room=current_room)
+                            advanced_after_disconnect = True
+
     room["players"] = [p for p in room["players"] if p["id"] != sid]
     if "pending_players" in room:
         room["pending_players"] = [
@@ -398,6 +436,7 @@ async def leave_room(sid: str) -> None:
     player_rooms.pop(sid, None)
 
     if len(room["players"]) == 0:
+        game_manager.end_game(left_room)
         del rooms[left_room]
         print(f"[room:delete] room {left_room} is now empty")
     else:
@@ -415,6 +454,18 @@ async def leave_room(sid: str) -> None:
                 {"username": room["players"][0]["username"]},
                 room=left_room,
             )
+        if removed_from_game and game:
+            if (
+                game.phase == GamePhase.WAITING_FOR_BETS
+                and len(game.players_dict) > 0
+                and len(game.player_bets) == len(game.players_dict)
+            ):
+                start_result = game.start_round()
+                await sio.emit("game:round-started", start_result, room=left_room)
+            else:
+                await sio.emit("game:state", game.get_game_state(), room=left_room)
+        elif game and not advanced_after_disconnect and game.phase in (GamePhase.DEALING, GamePhase.PLAYING):
+            await sio.emit("game:state", game.get_game_state(), room=left_room)
         await broadcast_room_update(left_room)
 
 
@@ -563,6 +614,12 @@ async def game_next_round(sid, *args):
     else:
         if sid != room["host_id"]:
             return {"error": "Only host can start next round."}
+
+    pending_removals = room.pop("pending_removals", [])
+    for pending_removal in pending_removals:
+        player_id = pending_removal.get("player_id")
+        if player_id:
+            game.remove_player(player_id)
 
     pending = room.pop("pending_players", [])
     game.reset_for_next_round(pending)
