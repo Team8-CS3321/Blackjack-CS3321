@@ -946,7 +946,20 @@
         $results.classList.remove("hidden");
         $results.innerHTML = Object.entries(lastResults).map(([name, r]) => {
           const cls = (r.outcome === "win" || r.outcome === "blackjack") ? "win" : r.outcome === "lose" ? "lose" : "push";
-          const delta = (r.outcome === "win" || r.outcome === "blackjack") ? ` (+${r.payout})` : r.outcome === "push" ? ` (refund ${r.payout})` : "";
+          const player = players.find((p) => p.username === name);
+          const blackjackNetPayout = r.outcome === "blackjack" &&
+            player &&
+            typeof player.bet === "number" &&
+            typeof r.payout === "number"
+            ? r.payout - player.bet
+            : null;
+          const delta = r.outcome === "blackjack"
+            ? (blackjackNetPayout !== null ? ` (+${blackjackNetPayout})` : ` (return ${r.payout})`)
+            : r.outcome === "win"
+              ? ` (+${r.payout})`
+              : r.outcome === "push"
+                ? ` (refund ${r.payout})`
+                : "";
           const label = r.outcome === "blackjack" ? "BLACKJACK!" : r.outcome.toUpperCase();
           return `<div class="result-line ${cls}">${escapeHtml(name)}: ${label} — ${r.hand_value}${delta}</div>`;
         }).join("");

@@ -172,7 +172,7 @@ class Game:
         'blackjack' pays 2x bet plus a 30% bonus on the bet.
         """
         dealer_blackjack = self.is_dealer_blackjack()
-        player_blackjack = getattr(player, 'is_blackjack', False)
+        player_blackjack = len(player.hand) == 2 and player.get_hand_value() == 21
 
         if player_blackjack and dealer_blackjack:
             return ('push', player.bet)
