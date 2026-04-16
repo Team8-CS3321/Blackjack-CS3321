@@ -71,6 +71,7 @@ class Player:
         self.hand = []
         self.is_bust = False
         self.is_stand = False
+        self.is_blackjack = False
 
     def draw_from_deck(self, deck):
         card = deck.draw_card()
@@ -92,6 +93,11 @@ class Player:
         self.hand = []
         self.is_bust = False
         self.is_stand = False
+        self.is_blackjack = False
+
+    def check_blackjack(self) -> bool:
+        """Natural blackjack: exactly two cards totaling 21."""
+        return len(self.hand) == 2 and self.get_hand_value() == 21
     
     def get_hand_value(self):
         """Get current hand value."""
@@ -155,11 +161,27 @@ class Game:
         value, _ = hand_value(self.dealer_hand)
         return value
 
+    def is_dealer_blackjack(self) -> bool:
+        """Natural dealer blackjack: exactly two cards totaling 21."""
+        return len(self.dealer_hand) == 2 and self.get_dealer_hand_value() == 21
+
     def determine_winner(self, player):
         """
         Determine outcome for a player.
-        Returns: ('win', payout), ('push', 0), or ('lose', 0)
+        Returns: ('win' | 'blackjack' | 'push' | 'lose', payout).
+        'blackjack' pays 2x bet plus a 30% bonus on the bet.
         """
+        dealer_blackjack = self.is_dealer_blackjack()
+        player_blackjack = getattr(player, 'is_blackjack', False)
+
+        if player_blackjack and dealer_blackjack:
+            return ('push', player.bet)
+        if player_blackjack:
+            bonus = (player.bet * 3) // 10
+            return ('blackjack', player.bet * 2 + bonus)
+        if dealer_blackjack:
+            return ('lose', 0)
+
         if player.is_bust:
             return ('lose', 0)
 

@@ -61,19 +61,66 @@ class RoomGame:
         # Check all players have placed bets
         if len(self.player_bets) != len(self.players_dict):
             return {"error": "Not all players have placed bets."}
-        
+
         # Reset hands
         self.game.reset_round()
-        
+
         # Deal initial cards
         self.game.deal_initial()
         self.phase = GamePhase.DEALING
-        
-        # Check for any blackjacks
+
+        # Detect natural blackjacks. Any player with Ace + 10-value auto-stands
+        # so turn order skips them; payouts are resolved in finalize_round via
+        # determine_winner, which credits a 30% bonus on top of the standard win.
+        dealer_blackjack = self.game.is_dealer_blackjack()
+        for player in self.game.players:
+            if player.check_blackjack():
+                player.is_blackjack = True
+                player.is_stand = True
+
+        # If dealer has blackjack the round ends immediately — no player
+        # decisions matter. determine_winner handles push vs. lose for each
+        # player based on whether they also have a natural.
+        if dealer_blackjack:
+            return self._finalize_round_early()
+
+        # If every player has a natural blackjack there is no one to play.
+        active_players = [
+            p for p in self.game.players if not p.is_stand and not p.is_bust
+        ]
+        if not active_players:
+            return self._finalize_round_early()
+
         self.phase = GamePhase.PLAYING
-        self.current_player_index = 0
-        
+        self.current_player_index = self._next_active_index(0)
+
         return self.get_game_state()
+
+    def _finalize_round_early(self) -> dict:
+        """End the current round immediately (dealer blackjack or all standing)."""
+        self.phase = GamePhase.DEALER_TURN
+        results = self.game.finalize_round()
+        self.phase = GamePhase.ROUND_COMPLETE
+        state = self.get_game_state()
+        state["phase"] = self.phase.value
+        state["message"] = (
+            "Dealer has Blackjack!" if self.game.is_dealer_blackjack() else "Round complete"
+        )
+        state["results"] = results
+        state["dealer_hand"] = [str(card) for card in self.game.dealer_hand]
+        state["dealer_value"] = self.game.get_dealer_hand_value()
+        return state
+
+    def _next_active_index(self, start: int) -> int:
+        """Return the first index >= start whose player still needs to act."""
+        player_ids = list(self.player_objects.keys())
+        i = start
+        while i < len(player_ids):
+            p = self.player_objects[player_ids[i]]
+            if not p.is_stand and not p.is_bust:
+                return i
+            i += 1
+        return i
     
     def place_bet(self, player_id: str, amount: int) -> dict:
         """Place bet for a player."""
@@ -147,11 +194,11 @@ class RoomGame:
     
     def advance_to_next_player(self) -> dict:
         """Move to next active player or dealer."""
-        self.current_player_index += 1
-        
-        # Skip busted players
+        self.current_player_index = self._next_active_index(self.current_player_index + 1)
+
+        # Skip busted/standing players
         active_players = [p for p in self.game.players if not p.is_bust and not p.is_stand]
-        
+
         if active_players:
             return self.get_game_state()
         
@@ -204,6 +251,7 @@ class RoomGame:
                 "balance": player_obj.balance,
                 "is_bust": player_obj.is_bust,
                 "is_stand": player_obj.is_stand,
+                "is_blackjack": player_obj.is_blackjack,
             })
         
         return {
