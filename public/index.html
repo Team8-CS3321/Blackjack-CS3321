@@ -945,9 +945,23 @@
       if (phase === "round_complete" && lastResults) {
         $results.classList.remove("hidden");
         $results.innerHTML = Object.entries(lastResults).map(([name, r]) => {
-          const cls = r.outcome === "win" ? "win" : r.outcome === "lose" ? "lose" : "push";
-          const delta = r.outcome === "win" ? ` (+${r.payout})` : r.outcome === "push" ? ` (refund ${r.payout})` : "";
-          return `<div class="result-line ${cls}">${escapeHtml(name)}: ${r.outcome.toUpperCase()} — ${r.hand_value}${delta}</div>`;
+          const cls = (r.outcome === "win" || r.outcome === "blackjack") ? "win" : r.outcome === "lose" ? "lose" : "push";
+          const player = players.find((p) => p.username === name);
+          const blackjackNetPayout = r.outcome === "blackjack" &&
+            player &&
+            typeof player.bet === "number" &&
+            typeof r.payout === "number"
+            ? r.payout - player.bet
+            : null;
+          const delta = r.outcome === "blackjack"
+            ? (blackjackNetPayout !== null ? ` (+${blackjackNetPayout})` : ` (return ${r.payout})`)
+            : r.outcome === "win"
+              ? ` (+${r.payout})`
+              : r.outcome === "push"
+                ? ` (refund ${r.payout})`
+                : "";
+          const label = r.outcome === "blackjack" ? "BLACKJACK!" : r.outcome.toUpperCase();
+          return `<div class="result-line ${cls}">${escapeHtml(name)}: ${label} — ${r.hand_value}${delta}</div>`;
         }).join("");
       } else {
         $results.classList.add("hidden");
@@ -961,8 +975,11 @@
     function seatStatus(p, i, phase, activeIndex) {
       if (phase === "round_complete" && lastResults && lastResults[p.username]) {
         const outcome = lastResults[p.username].outcome;
-        return { text: outcome.toUpperCase(), cls: outcome };
+        const text = outcome === "blackjack" ? "BLACKJACK!" : outcome.toUpperCase();
+        const cls = outcome === "blackjack" ? "win" : outcome;
+        return { text, cls };
       }
+      if (p.is_blackjack) return { text: "BLACKJACK!", cls: "win" };
       if (p.is_bust) return { text: "BUST", cls: "bust" };
       if (p.is_stand) return { text: "STAND", cls: "" };
       if (phase === "waiting_for_bets") {
