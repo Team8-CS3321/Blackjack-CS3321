@@ -1,56 +1,61 @@
-# Blackjack Multiplayer
+# Blackjack Multiplayer  
+  
+> CS3321 Team 8 Project — Multiplayer Blackjack Game  
+  
+## Quick Start  
+  
+```bash  
+# Clone repo (requires authentication)
+gh repo clone Team8-CS3321/Blackjack-CS3321
+cd Blackjack-CS3321
 
-> CS3321 Team 8 Project — Multiplayer Blackjack Game
+# Create virtual environment with dependencies(one-time)  
+uv sync
 
-## Quick Start
+# Login to doppler for team secrets  
+doppler login  
 
-```bash
-# Create virtual environment (one-time)
+# Setup Doppler configuration
+doppler setup # Select "dev"
+  
+# Run the server  
+doppler run -- uv run python .\src\app.py
 
-python -m venv venv
-=======
-py -m venv venv
+# Open in browser  
+http://localhost:3000  
+```  
+## Docker (WIP)
+ ```bash
+ # Build image
+ docker build -t # blackjack-isu-cs3321-s26:<tag> .
 
-
-# Install dependencies
-venv/Scripts/pip install -r requirements.txt
-
-
-# Login to doppler for team secrets
-doppler login
-
-# Run the server
-doppler run -- venv/Scripts/python src/app.py
-=======
-# Run the server
-venv/Scripts/python app.py
-
-
-# Open in browser
-# http://localhost:3000
-```
+# Run with secrets
+doppler run -- docker run blackjack-isu-cs3321-s26
+ ``` 
 
 ## What's Included
 
 | File | Purpose |
 |------|---------|
-| `app.py` | Quart + python-socketio server — rooms, join codes, player tracking, chat |
+| `src/app.py` | Quart + python-socketio server — rooms, join codes, player tracking, chat |
+| `src/ChatGPTClient.py` | ChatGPT client for AI-powered blackjack advice and rule reminders |
+| `src/game.py` | Core blackjack game logic and room management |
+| `src/rules_and_objects.py` | Definitions for cards, deck, hands, players, and game rules |
 | `public/index.html` | Retro ASCII-styled client — lobby, room view, chat |
-<<<<<<< HEAD
-| `requirements.txt` | Dependencies: `quart`, `python-socketio`, `uvicorn`, `openai` |
-=======
-| `requirements.txt` | Dependencies: `quart`, `python-socketio`, `uvicorn` |
-
-## How It Works
-
-1. **Create a table** — server generates a 5-char room code (e.g., `K7F3P`)
-2. **Share the code** — other players enter it to join (up to 6 per room)
-3. **Chat** is scoped to the room
-4. **Ready toggle** per player (prep for game start logic)
-
+| `pyproject.toml` | Dependencies: `quart`, `python-socketio`, `uvicorn`, `openai` |
+  
+## How It Works  
+  
+1. **Create a table** — server generates a 5-char room code (e.g., `K7F3P`)  
+2. **Share the code** — other players enter it to join (up to 6 per room)  
+3. **Chat** is scoped to the room  
+4. **Ready toggle** per player (prep for game start logic)  
+  
 ## Socket.IO Events
 
+
 ### Client -> Server
+
 
 | Event | Payload | Description |
 |-------|---------|-------------|
@@ -59,29 +64,36 @@ venv/Scripts/python app.py
 | `room:leave` | — | Leave current room |
 | `player:ready` | — | Toggle ready status |
 | `chat:message` | `{ message }` | Send chat message |
+| `ai:help` | `{ query }` | Request AI advice |
+| `game:start` | — | Start the game (host only) |
+| `game:place-bet` | `{ amount }` | Place bet for the round |
+| `game:hit` | — | Hit (draw a card) |
+| `game:stand` | — | Stand (end turn) |
+| `game:get-state` | — | Request current game state |
+| `game:next-round` | — | Start next round (host or solo) |
+| `singleplayer:start` | `{ username }` | Start single-player game |
+
 
 ### Server -> Client
+
+  
 
 | Event | Payload | Description |
 |-------|---------|-------------|
 | `room:update` | `{ code, players[], hostId, gameStarted }` | Full room state |
-| `room:player-joined` | `{ username }` | New player notification |
+| `room:player-joined` | `{ username, spectator }` | New player notification |
 | `room:player-left` | `{ username }` | Player left notification |
 | `room:new-host` | `{ username }` | Host transferred |
 | `chat:message` | `{ username, message, timestamp }` | Chat relay |
+| `game:started` | `{ message }` | Game started notification |
+| `game:round-started` | game state | Round started with initial hands |
+| `game:state` | game state | Current game state update |
+| `singleplayer:ready` | `{ code, player_id, room, state }` | Single-player game ready |
 
-## TODO
 
-- [ ] Integrate Deck of Cards API for card dealing
-- [ ] Game logic (hit, stand, bust, dealer turn)
-- [ ] Dockerfile for containerized deployment
-- [ ] GitHub Actions CI/CD pipeline
-- [ ] Doppler secret management
-- [ ] AWS deployment (EC2/ECS)
-- [ ] Unit tests (80% coverage target)
-
-## Team
-
-- **Pravesh Aryal** — Server (Quart/Python port)
-- **Carter Luker** — GitHub org, architecture
-- **Steve Taylor (Gavin)** — TBD
+## Team  
+  
+- **Pravesh Aryal** — Server (Quart/Python port)  and UI Design
+- **Carter Luker** — Project Management and Architecture  
+- **Steve Taylor (Gavin)** — Chat and AI Tools
+- **Luis Hernandez** — Testing Lead
