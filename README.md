@@ -33,6 +33,15 @@ http://localhost:3000
 doppler run -- docker run blackjack-isu-cs3321-s26
  ``` 
 
+ ## Testing
+ ```bash
+ # Run unit tests
+ uv run pytest
+
+ # Get coverage report
+ uv run pytest --cov=src --cov-report=html
+ ```
+
 ## What's Included
 
 | File | Purpose |
