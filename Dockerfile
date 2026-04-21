@@ -19,10 +19,11 @@ COPY pyproject.toml uv.lock ./
 # Sync dependencies
 RUN uv sync --frozen --no-install-project
 
-COPY src/ ./src/
-COPY public/ ./public/
+COPY backend/ ./backend/
+COPY frontend/ ./frontend/
 
 EXPOSE 3000
+
 
 ENV PYTHONPATH=/app/src
 

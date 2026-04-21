@@ -19,7 +19,7 @@ doppler login
 doppler setup # Select "dev"
   
 # Run the server  
-doppler run -- uv run python .\src\app.py
+doppler run -- uv run python .\backend\blackjack\app.py
 
 # Open in browser  
 http://localhost:3000  
@@ -39,18 +39,18 @@ doppler run -- docker run blackjack-isu-cs3321-s26
  uv run pytest
 
  # Get coverage report
- uv run pytest --cov=src --cov-report=html
+ uv run pytest --cov=backend --cov-report=html
  ```
 
 ## What's Included
 
 | File | Purpose |
 |------|---------|
-| `src/app.py` | Quart + python-socketio server — rooms, join codes, player tracking, chat |
-| `src/ChatGPTClient.py` | ChatGPT client for AI-powered blackjack advice and rule reminders |
-| `src/game.py` | Core blackjack game logic and room management |
-| `src/rules_and_objects.py` | Definitions for cards, deck, hands, players, and game rules |
-| `public/index.html` | Retro ASCII-styled client — lobby, room view, chat |
+| `backend/app.py` | Quart + python-socketio server — rooms, join codes, player tracking, chat |
+| `backend/ChatGPTClient.py` | ChatGPT client for AI-powered blackjack advice and rule reminders |
+| `backend/game.py` | Core blackjack game logic and room management |
+| `backend/rules_and_objects.py` | Definitions for cards, deck, hands, players, and game rules |
+| `frontend/index.html` | Retro ASCII-styled client — lobby, room view, chat |
 | `pyproject.toml` | Dependencies: `quart`, `python-socketio`, `uvicorn`, `openai` |
   
 ## How It Works  
