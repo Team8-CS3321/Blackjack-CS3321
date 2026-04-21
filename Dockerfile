@@ -13,10 +13,10 @@ COPY pyproject.toml uv.lock ./
 # Sync dependencies
 RUN uv sync --frozen --no-install-project
 
-COPY src/ ./src/
-COPY public/ ./public/
+COPY backend/ ./backend/
+COPY frontend/ ./frontend/
 
 EXPOSE 3000
 
-ENV PYTHONPATH=/app/src
-CMD ["uv", "run", "uvicorn", "src.app:asgi_app", "--host", "0.0.0.0", "--port", "3000"]
+ENV PYTHONPATH=/app/backend
+CMD ["uv", "run", "uvicorn", "backend.app:asgi_app", "--host", "0.0.0.0", "--port", "3000"]
