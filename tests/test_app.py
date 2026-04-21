@@ -1,4 +1,5 @@
 import re
+import asyncio
 from app import (
     ROOM_CODE_CHARS,
     generate_player_id,
@@ -10,6 +11,20 @@ from app import (
     normalize_ai_query,
     room_has_username,
     rooms,
+    ai_help,
+    game_start,
+    game_place_bet,
+    game_hit,
+    game_stand,
+    game_get_state,
+    game_next_round,
+    singleplayer_start,
+    player_rooms,
+    player_info,
+    rooms,
+    ai_help_last_request_at,
+    ai_help_in_flight,
+    GamePhase,
 )
 
 
@@ -120,3 +135,113 @@ def test_generate_room_code_avoids_existing_room_codes(monkeypatch):
     code = generate_room_code()
 
     assert code == "FGHIJ"
+def teardown_function():
+    rooms.clear()
+    player_rooms.clear()
+    player_info.clear()
+    ai_help_last_request_at.clear()
+    ai_help_in_flight.clear()
+
+
+def test_ai_help_rejects_invalid_payload():
+    result = asyncio.run(ai_help("sid1", "bad payload"))
+    assert result["error"] == "Invalid payload."
+
+
+def test_ai_help_requires_room_membership():
+    result = asyncio.run(ai_help("sid1", {}))
+    assert result["error"] == "Not in a room."
+
+
+def test_ai_help_requires_existing_room():
+    player_rooms["sid1"] = "ABCDE"
+    result = asyncio.run(ai_help("sid1", {}))
+    assert result["error"] == "Room not found."
+
+
+def test_ai_help_requires_existing_player_in_room():
+    player_rooms["sid1"] = "ABCDE"
+    rooms["ABCDE"] = {"players": []}
+    result = asyncio.run(ai_help("sid1", {}))
+    assert result["error"] == "Player not found."
+
+
+def test_ai_help_returns_error_when_chat_unavailable(monkeypatch):
+    player_rooms["sid1"] = "ABCDE"
+    rooms["ABCDE"] = {
+        "players": [{"id": "sid1", "username": "Luis"}]
+    }
+
+    monkeypatch.setattr("app.chat", None)
+
+    result = asyncio.run(ai_help("sid1", {}))
+    assert "AI helper is unavailable" in result["error"]
+
+
+def test_game_start_requires_room_membership():
+    result = asyncio.run(game_start("sid1"))
+    assert result["error"] == "Not in a room."
+
+
+def test_game_start_requires_host():
+    player_rooms["sid2"] = "ABCDE"
+    rooms["ABCDE"] = {
+        "host_id": "sid1",
+        "players": [{"id": "sid1", "username": "Luis", "ready": True, "player_id": "p1"}],
+        "game_started": False,
+    }
+
+    result = asyncio.run(game_start("sid2"))
+    assert result["error"] == "Only host can start the game."
+
+
+def test_game_start_requires_all_players_ready():
+    player_rooms["sid1"] = "ABCDE"
+    rooms["ABCDE"] = {
+        "host_id": "sid1",
+        "players": [
+            {"id": "sid1", "username": "Luis", "ready": True, "player_id": "p1"},
+            {"id": "sid2", "username": "Bob", "ready": False, "player_id": "p2"},
+        ],
+        "game_started": False,
+    }
+
+    result = asyncio.run(game_start("sid1"))
+    assert result["error"] == "All players must be ready."
+
+
+def test_game_place_bet_requires_room_membership():
+    result = asyncio.run(game_place_bet("sid1", {"amount": 50}))
+    assert result["error"] == "Not in a room."
+
+
+def test_game_hit_requires_room_membership():
+    result = asyncio.run(game_hit("sid1"))
+    assert result["error"] == "Not in a room."
+
+
+def test_game_stand_requires_room_membership():
+    result = asyncio.run(game_stand("sid1"))
+    assert result["error"] == "Not in a room."
+
+
+def test_game_get_state_requires_room_membership():
+    result = asyncio.run(game_get_state("sid1"))
+    assert result["error"] == "Not in a room."
+
+
+def test_game_next_round_requires_room_membership():
+    result = asyncio.run(game_next_round("sid1"))
+    assert result["error"] == "Not in a room."
+
+
+def test_singleplayer_start_requires_connection():
+    result = asyncio.run(singleplayer_start("sid1", {"username": "Luis"}))
+    assert result["error"] == "Not connected."
+
+
+def test_singleplayer_start_requires_username():
+    player_info["sid1"] = {"player_id": "p1"}
+
+    result = asyncio.run(singleplayer_start("sid1", {"username": "   "}))
+    assert result["error"] == "Username is required."

@@ -5,6 +5,12 @@ LABEL authors="Carter"
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
+# Install Doppler CLI
+RUN apt-get update && apt-get install -y --no-install-recommends curl gnupg && \
+    curl -Ls --tlsv1.2 --proto "=https" --retry 3 https://cli.doppler.com/install.sh | sh && \
+    apt-get purge -y --auto-remove curl gnupg && \
+    rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copy dependency files
@@ -18,5 +24,10 @@ COPY frontend/ ./frontend/
 
 EXPOSE 3000
 
-ENV PYTHONPATH=/app/backend
-CMD ["uv", "run", "uvicorn", "backend.app:asgi_app", "--host", "0.0.0.0", "--port", "3000"]
+
+ENV PYTHONPATH=/app/src
+
+# Doppler runs as the entrypoint and injects secrets before handing off to the app.
+# Pass DOPPLER_TOKEN at runtime: -e DOPPLER_TOKEN=dp.st.xxxx
+# or via a Docker secret / Compose secrets block.
+CMD ["doppler", "run", "--", "uv", "run", "uvicorn", "src.app:asgi_app", "--host", "0.0.0.0", "--port", "3000"]
