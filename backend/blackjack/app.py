@@ -3,11 +3,11 @@ import secrets
 import time
 import uuid
 import asyncio
-from .ChatGPTClient import ChatGPTClient
+from ChatGPTClient import ChatGPTClient
 
 from quart import Quart, send_from_directory, jsonify
 import socketio
-from .game import GameManager, GamePhase
+from game import GameManager, GamePhase
 from pathlib import Path
 
 # ── ChatGPT Client ────────────────────────────────────────────────────
