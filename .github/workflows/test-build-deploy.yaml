@@ -63,11 +63,6 @@ jobs:
           doppler secrets get SSH_AWS_PEM --plain --token ${{ secrets.DOPPLER_TOKEN }} > aws-key.pem
           chmod 600 aws-key.pem
 
-      - name: Write PEM key to file
-        run: |
-          echo "${{ env.SSH_AWS_PEM }}" > aws-key.pem
-          chmod 600 aws-key.pem
-
       - name: Deploy to EC2 via SSH
         run: |
           ssh -o StrictHostKeyChecking=no -i aws-key.pem ${{ env.AWS_EC2_USERNAME }}@${{ env.EC2_HOST }} << 'EOF'
