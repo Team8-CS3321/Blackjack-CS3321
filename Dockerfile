@@ -25,7 +25,13 @@ COPY pyproject.toml uv.lock ./
 
 # Copy backend and frontend assets
 COPY backend/ ./backend/
-COPY frontend/ ./frontend/
+
+# Sync and build the project
+RUN uv sync --frozen --no-install-project \
+    && uv build
+
+# Install the built wheel (includes frontend as build artifact)
+RUN uv pip install dist/*.whl --no-deps
 
 # Sync and build the project
 RUN uv sync --frozen --no-install-project \
