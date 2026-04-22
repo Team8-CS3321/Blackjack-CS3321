@@ -298,11 +298,11 @@ def test_determine_winner_player_loses():
     assert payout == 0
 
 
-def test_determine_winner_player_natural_blackjack_pays_2x_bet_plus_30_percent_of_2x():
+def test_determine_winner_player_natural_blackjack_pays_3_to_2():
     """Regression test for issue #45.
 
-    Natural blackjack must pay 2x bet plus 30% of that 2x win,
-    not 30% of the original bet alone. Bet 100 -> payout 260.
+    Natural blackjack pays 3:2 on the bet — bet 100 returns the 100 stake
+    plus 150 in winnings for a total payout of 250.
     """
     game = Game()
     player = Player("Luis")
@@ -313,7 +313,21 @@ def test_determine_winner_player_natural_blackjack_pays_2x_bet_plus_30_percent_o
     outcome, payout = game.determine_winner(player)
 
     assert outcome == "blackjack"
-    assert payout == 260
+    assert payout == 250
+
+
+def test_determine_winner_player_natural_blackjack_3_to_2_small_bet():
+    """Bet 10 on a natural blackjack returns 25 total (10 stake + 15 winnings)."""
+    game = Game()
+    player = Player("Luis")
+    player.bet = 10
+    player.hand = [Card("Hearts", "Ace"), Card("Clubs", "King")]
+    game.dealer_hand = [Card("Spades", "10"), Card("Diamonds", "7")]
+
+    outcome, payout = game.determine_winner(player)
+
+    assert outcome == "blackjack"
+    assert payout == 25
 
 
 def test_determine_winner_player_blackjack_with_dealer_blackjack_is_push():
