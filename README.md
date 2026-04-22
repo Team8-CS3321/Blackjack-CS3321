@@ -35,7 +35,7 @@ docker run \
   --env DOPPLER_TOKEN=<your-doppler-token> \
   --env HOST=0.0.0.0 \
   --env PORT=3000 \
-  -p 3000:3000 \
+  -p 80:3000 \
   blackjack-isu-cs3321-s26:latest
 
 # Or use docker-compose with a .env file
