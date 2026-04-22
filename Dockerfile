@@ -25,9 +25,12 @@ COPY frontend/ ./frontend/
 EXPOSE 3000
 
 
-ENV PYTHONPATH=/app/src
+ENV PYTHONPATH=/app
+
+# Install the project package
+RUN uv pip install -e .
 
 # Doppler runs as the entrypoint and injects secrets before handing off to the app.
 # Pass DOPPLER_TOKEN at runtime: -e DOPPLER_TOKEN=dp.st.xxxx
 # or via a Docker secret / Compose secrets block.
-CMD ["doppler", "run", "--", "uv", "run", "uvicorn", "src.app:asgi_app", "--host", "0.0.0.0", "--port", "3000"]
+CMD ["doppler", "run", "--", "uv", "run", "uvicorn", "blackjack.app:asgi_app", "--host", "0.0.0.0", "--port", "3000"]
