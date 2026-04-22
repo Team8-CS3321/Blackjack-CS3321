@@ -33,6 +33,13 @@ RUN uv sync --frozen --no-install-project \
 # Install the built wheel (includes frontend as build artifact)
 RUN uv pip install dist/*.whl --no-deps
 
+# Sync and build the project
+RUN uv sync --frozen --no-install-project \
+    && uv build
+
+# Install the built wheel (includes frontend as build artifact)
+RUN uv pip install dist/*.whl --no-deps
+
 EXPOSE 3000
 
 ENV PYTHONPATH=/app
