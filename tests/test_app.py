@@ -740,20 +740,19 @@ def test_leave_room_marks_pending_removal_during_playing_phase(monkeypatch):
 
 def test_index_html_is_served_on_root():
     """Test that index.html is served when accessing the root path."""
-    # Set static_folder to the correct path for testing
     from pathlib import Path
-    app_module.app.static_folder = str(Path(app_module.__file__).parent.parent.parent / "frontend")
-    
+    app_module.app.static_folder = str(Path(app_module.__file__).parent / "frontend")
+
     async def _test():
         client = app_module.app.test_client()
-        
+
         response = await client.get("/")
         data = await response.get_data()
-        
+
         assert response.status_code == 200
         assert b"<!DOCTYPE html>" in data
         assert b"Blackjack" in data
-    
+
     asyncio.run(_test())
 
 
