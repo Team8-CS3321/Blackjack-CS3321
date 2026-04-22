@@ -19,7 +19,7 @@ doppler login
 doppler setup # Select "dev"
   
 # Run the server  
-doppler run -- uv run python .\backend\blackjack\app.py
+doppler run -- uv run python -m blackjack.app
 
 # Open in browser  
 http://localhost:3000  

@@ -1,4 +1,4 @@
-from rules_and_objects import *
+from .rules_and_objects import *
 from enum import Enum
 from typing import Optional
 
