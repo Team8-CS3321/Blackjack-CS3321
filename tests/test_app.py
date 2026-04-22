@@ -736,3 +736,20 @@ def test_leave_room_marks_pending_removal_during_playing_phase(monkeypatch):
     asyncio.run(app_module.leave_room("sid1"))
 
     assert app_module.rooms["ROOM1"]["pending_removals"][0]["player_id"] == "p1"
+
+
+def test_index_html_is_served_on_root():
+    """Test that index.html is served when accessing the root path."""
+    async def _test():
+        client = app_module.app.test_client()
+        
+        response = await client.get("/")
+        data = await response.get_data()
+        
+        assert response.status_code == 200
+        assert b"<!DOCTYPE html>" in data
+        assert b"Blackjack" in data
+    
+    asyncio.run(_test())
+
+
