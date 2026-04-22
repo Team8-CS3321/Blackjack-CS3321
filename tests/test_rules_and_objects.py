@@ -298,6 +298,51 @@ def test_determine_winner_player_loses():
     assert payout == 0
 
 
+def test_determine_winner_player_natural_blackjack_pays_3_to_2():
+    """Regression test for issue #45.
+
+    Natural blackjack pays 3:2 on the bet — bet 100 returns the 100 stake
+    plus 150 in winnings for a total payout of 250.
+    """
+    game = Game()
+    player = Player("Luis")
+    player.bet = 100
+    player.hand = [Card("Hearts", "Ace"), Card("Clubs", "King")]
+    game.dealer_hand = [Card("Spades", "10"), Card("Diamonds", "7")]
+
+    outcome, payout = game.determine_winner(player)
+
+    assert outcome == "blackjack"
+    assert payout == 250
+
+
+def test_determine_winner_player_natural_blackjack_3_to_2_small_bet():
+    """Bet 10 on a natural blackjack returns 25 total (10 stake + 15 winnings)."""
+    game = Game()
+    player = Player("Luis")
+    player.bet = 10
+    player.hand = [Card("Hearts", "Ace"), Card("Clubs", "King")]
+    game.dealer_hand = [Card("Spades", "10"), Card("Diamonds", "7")]
+
+    outcome, payout = game.determine_winner(player)
+
+    assert outcome == "blackjack"
+    assert payout == 25
+
+
+def test_determine_winner_player_blackjack_with_dealer_blackjack_is_push():
+    game = Game()
+    player = Player("Luis")
+    player.bet = 100
+    player.hand = [Card("Hearts", "Ace"), Card("Clubs", "King")]
+    game.dealer_hand = [Card("Spades", "Ace"), Card("Diamonds", "Queen")]
+
+    outcome, payout = game.determine_winner(player)
+
+    assert outcome == "push"
+    assert payout == 100
+
+
 def test_finalize_round_updates_balances_and_results(monkeypatch):
     game = Game()
     p1 = Player("Luis")
