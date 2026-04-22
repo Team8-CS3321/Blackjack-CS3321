@@ -19,19 +19,30 @@ doppler login
 doppler setup # Select "dev"
   
 # Run the server  
-doppler run -- uv run python .\backend\blackjack\app.py
+doppler run -- uv run python -m blackjack.app
 
 # Open in browser  
 http://localhost:3000  
 ```  
-## Docker (WIP)
- ```bash
- # Build image
- docker build -t # blackjack-isu-cs3321-s26:<tag> .
+## Docker
 
-# Run with secrets
-doppler run -- docker run blackjack-isu-cs3321-s26
- ``` 
+```bash
+# Build image (no secrets needed at build time)
+docker build -t blackjack-isu-cs3321-s26:latest .
+
+# Run container (pass secrets at runtime)
+docker run \
+  --env DOPPLER_TOKEN=<your-doppler-token> \
+  --env HOST=0.0.0.0 \
+  --env PORT=3000 \
+  -p 3000:3000 \
+  blackjack-isu-cs3321-s26:latest
+
+# Or use docker-compose with a .env file
+# docker-compose up
+```
+
+**Important:** `DOPPLER_TOKEN` must be passed at runtime (not build time). The container will inject secrets when it starts.
 
  ## Testing
  ```bash
@@ -46,10 +57,10 @@ doppler run -- docker run blackjack-isu-cs3321-s26
 
 | File | Purpose |
 |------|---------|
-| `backend/app.py` | Quart + python-socketio server — rooms, join codes, player tracking, chat |
-| `backend/ChatGPTClient.py` | ChatGPT client for AI-powered blackjack advice and rule reminders |
-| `backend/game.py` | Core blackjack game logic and room management |
-| `backend/rules_and_objects.py` | Definitions for cards, deck, hands, players, and game rules |
+| `backend/blackjack/app.py` | Quart + python-socketio server — rooms, join codes, player tracking, chat |
+| `backend/blackjack/ChatGPTClient.py` | ChatGPT client for AI-powered blackjack advice and rule reminders |
+| `backend/blackjack/game.py` | Core blackjack game logic and room management |
+| `backend/blackjack/rules_and_objects.py` | Definitions for cards, deck, hands, players, and game rules |
 | `frontend/index.html` | Retro ASCII-styled client — lobby, room view, chat |
 | `pyproject.toml` | Dependencies: `quart`, `python-socketio`, `uvicorn`, `openai` |
   
@@ -62,9 +73,7 @@ doppler run -- docker run blackjack-isu-cs3321-s26
   
 ## Socket.IO Events
 
-
 ### Client -> Server
-
 
 | Event | Payload | Description |
 |-------|---------|-------------|
@@ -82,10 +91,8 @@ doppler run -- docker run blackjack-isu-cs3321-s26
 | `game:next-round` | — | Start next round (host or solo) |
 | `singleplayer:start` | `{ username }` | Start single-player game |
 
-
 ### Server -> Client
 
-  
 
 | Event | Payload | Description |
 |-------|---------|-------------|
