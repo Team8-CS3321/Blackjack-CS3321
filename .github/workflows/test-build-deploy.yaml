@@ -1,15 +1,12 @@
-# .github/workflows/deploy.yml
-
 name: Test-Build-Deploy Pipeline
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
 
 jobs:
 
-  # ── Job 1: Test ─────────────────────────────────────────────────────
+  # ── Job 1: Test ────────────────────────────────────────────────────
   test:
     runs-on: ubuntu-latest
 
@@ -26,7 +23,7 @@ jobs:
       - name: Run tests
         run: uv run pytest
 
-  # ── Job 2: Build & Push ─────────────────────────────────────────────
+  # ── Job 2: Build & Push to Docker Hub ─────────────────────────────
   build:
     runs-on: ubuntu-latest
     needs: test  # Only runs if test job passes
@@ -47,10 +44,10 @@ jobs:
       - name: Build Docker image
         run: docker build -t lukecart/blackjack-isu-cs3321-s26:latest .
 
-      - name: Push Docker image to Docker Hub
+      - name: Push Docker image
         run: docker push lukecart/blackjack-isu-cs3321-s26:latest
 
-  # ── Job 3: Deploy ────────────────────────────────────────────────────
+  # ── Job 3: Deploy to AWS EC2 ───────────────────────────────────────
   deploy:
     runs-on: ubuntu-latest
     needs: build  # Only runs if build job passes
@@ -61,20 +58,18 @@ jobs:
 
       - name: Fetch secrets from Doppler
         run: |
-          echo "EC2_USERNAME=$(doppler secrets get AWS_EC2_USERNAME --plain --token ${{ secrets.DOPPLER_TOKEN }})" >> $GITHUB_ENV
-          echo "EC2_HOST=$(doppler secrets get HOST --plain --token ${{ secrets.DOPPLER_TOKEN }})" >> $GITHUB_ENV
-          echo "SSH_KEY<<EOF" >> $GITHUB_ENV
-          doppler secrets get SSH_AWS_PEM --plain --token ${{ secrets.DOPPLER_TOKEN }} >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          echo "EC2_HOST=$(doppler secrets get EC2_HOST --plain --token ${{ secrets.DOPPLER_TOKEN }})" >> $GITHUB_ENV
+          echo "AWS_EC2_USERNAME=$(doppler secrets get AWS_EC2_USERNAME --plain --token ${{ secrets.DOPPLER_TOKEN }})" >> $GITHUB_ENV
+          echo "SSH_AWS_PEM=$(doppler secrets get SSH_AWS_PEM --plain --token ${{ secrets.DOPPLER_TOKEN }})" >> $GITHUB_ENV
 
-      - name: Write SSH key to file
+      - name: Write PEM key to file
         run: |
-          echo "${{ env.SSH_KEY }}" > key.pem
-          chmod 600 key.pem
+          echo "${{ env.SSH_AWS_PEM }}" > aws-key.pem
+          chmod 600 aws-key.pem
 
-      - name: Deploy to EC2
+      - name: Deploy to EC2 via SSH
         run: |
-          ssh -o StrictHostKeyChecking=no -i key.pem ${{ env.EC2_USERNAME }}@${{ env.EC2_HOST }} << 'ENDSSH'
+          ssh -o StrictHostKeyChecking=no -i aws-key.pem ${{ env.AWS_EC2_USERNAME }}@${{ env.EC2_HOST }} << 'EOF'
             docker pull lukecart/blackjack-isu-cs3321-s26:latest
             docker stop blackjack || true
             docker rm blackjack || true
@@ -84,8 +79,8 @@ jobs:
               --env DOPPLER_TOKEN=${{ secrets.DOPPLER_TOKEN }} \
               -p 3000:3000 \
               lukecart/blackjack-isu-cs3321-s26:latest
-          ENDSSH
+          EOF
 
-      - name: Clean up SSH key
+      - name: Clean up PEM file
         if: always()
-        run: rm -f key.pem
+        run: rm -f aws-key.pem
