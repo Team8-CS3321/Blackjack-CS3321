@@ -60,7 +60,8 @@ jobs:
         run: |
           echo "EC2_HOST=$(doppler secrets get EC2_HOST --plain --token ${{ secrets.DOPPLER_TOKEN }})" >> $GITHUB_ENV
           echo "AWS_EC2_USERNAME=$(doppler secrets get AWS_EC2_USERNAME --plain --token ${{ secrets.DOPPLER_TOKEN }})" >> $GITHUB_ENV
-          echo "SSH_AWS_PEM=$(doppler secrets get SSH_AWS_PEM --plain --token ${{ secrets.DOPPLER_TOKEN }})" >> $GITHUB_ENV
+          doppler secrets get SSH_AWS_PEM --plain --token ${{ secrets.DOPPLER_TOKEN }} > aws-key.pem
+          chmod 600 aws-key.pem
 
       - name: Write PEM key to file
         run: |
