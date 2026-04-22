@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from game import GameManager, GamePhase, RoomGame
+from blackjack.game import GameManager, GamePhase, RoomGame
 
 def sample_players():
     return {

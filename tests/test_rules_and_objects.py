@@ -1,4 +1,4 @@
-from rules_and_objects import Card, Deck, Player, Game, hand_value
+from blackjack.rules_and_objects import Card, Deck, Player, Game, hand_value
 
 
 def test_card_string_representation():
