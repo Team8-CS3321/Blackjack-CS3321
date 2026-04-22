@@ -169,7 +169,7 @@ class Game:
         """
         Determine outcome for a player.
         Returns: ('win' | 'blackjack' | 'push' | 'lose', payout).
-        'blackjack' pays 2x bet plus a 30% bonus on the bet.
+        'blackjack' pays 2x bet plus a 30% bonus on the 2x win (bet 100 -> 260).
         """
         dealer_blackjack = self.is_dealer_blackjack()
         player_blackjack = len(player.hand) == 2 and player.get_hand_value() == 21
@@ -177,8 +177,9 @@ class Game:
         if player_blackjack and dealer_blackjack:
             return ('push', player.bet)
         if player_blackjack:
-            bonus = (player.bet * 3) // 10
-            return ('blackjack', player.bet * 2 + bonus)
+            base = player.bet * 2
+            bonus = (base * 3) // 10
+            return ('blackjack', base + bonus)
         if dealer_blackjack:
             return ('lose', 0)
 

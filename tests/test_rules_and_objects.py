@@ -298,6 +298,37 @@ def test_determine_winner_player_loses():
     assert payout == 0
 
 
+def test_determine_winner_player_natural_blackjack_pays_2x_bet_plus_30_percent_of_2x():
+    """Regression test for issue #45.
+
+    Natural blackjack must pay 2x bet plus 30% of that 2x win,
+    not 30% of the original bet alone. Bet 100 -> payout 260.
+    """
+    game = Game()
+    player = Player("Luis")
+    player.bet = 100
+    player.hand = [Card("Hearts", "Ace"), Card("Clubs", "King")]
+    game.dealer_hand = [Card("Spades", "10"), Card("Diamonds", "7")]
+
+    outcome, payout = game.determine_winner(player)
+
+    assert outcome == "blackjack"
+    assert payout == 260
+
+
+def test_determine_winner_player_blackjack_with_dealer_blackjack_is_push():
+    game = Game()
+    player = Player("Luis")
+    player.bet = 100
+    player.hand = [Card("Hearts", "Ace"), Card("Clubs", "King")]
+    game.dealer_hand = [Card("Spades", "Ace"), Card("Diamonds", "Queen")]
+
+    outcome, payout = game.determine_winner(player)
+
+    assert outcome == "push"
+    assert payout == 100
+
+
 def test_finalize_round_updates_balances_and_results(monkeypatch):
     game = Game()
     p1 = Player("Luis")
