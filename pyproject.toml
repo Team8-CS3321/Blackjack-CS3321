@@ -29,4 +29,4 @@ include = ["backend/*"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["backend/blackjack"]
-include = ["frontend/"]
+artifacts = ["frontend/"]

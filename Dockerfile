@@ -25,7 +25,6 @@ COPY pyproject.toml uv.lock ./
 
 # Copy backend and frontend assets
 COPY backend/ ./backend/
-COPY frontend/ ./frontend/
 
 # Sync and build the project
 RUN uv sync --frozen --no-install-project \
