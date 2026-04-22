@@ -1,0 +1,91 @@
+# .github/workflows/deploy.yml
+
+name: Test-Build-Deploy Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+
+  # ── Job 1: Test ─────────────────────────────────────────────────────
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run tests
+        run: uv run pytest
+
+  # ── Job 2: Build & Push ─────────────────────────────────────────────
+  build:
+    runs-on: ubuntu-latest
+    needs: test  # Only runs if test job passes
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
+      - name: Log in to Docker Hub
+        run: |
+          DOCKER_USERNAME=$(doppler secrets get DOCKER_USERNAME --plain --token ${{ secrets.DOPPLER_TOKEN }})
+          DOCKER_PASSWORD=$(doppler secrets get DOCKER_PASSWORD --plain --token ${{ secrets.DOPPLER_TOKEN }})
+          echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+
+      - name: Build Docker image
+        run: docker build -t lukecart/blackjack-isu-cs3321-s26:latest .
+
+      - name: Push Docker image to Docker Hub
+        run: docker push lukecart/blackjack-isu-cs3321-s26:latest
+
+  # ── Job 3: Deploy ────────────────────────────────────────────────────
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build  # Only runs if build job passes
+
+    steps:
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
+      - name: Fetch secrets from Doppler
+        run: |
+          echo "EC2_USERNAME=$(doppler secrets get AWS_EC2_USERNAME --plain --token ${{ secrets.DOPPLER_TOKEN }})" >> $GITHUB_ENV
+          echo "EC2_HOST=$(doppler secrets get HOST --plain --token ${{ secrets.DOPPLER_TOKEN }})" >> $GITHUB_ENV
+          echo "SSH_KEY<<EOF" >> $GITHUB_ENV
+          doppler secrets get SSH_AWS_PEM --plain --token ${{ secrets.DOPPLER_TOKEN }} >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Write SSH key to file
+        run: |
+          echo "${{ env.SSH_KEY }}" > key.pem
+          chmod 600 key.pem
+
+      - name: Deploy to EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no -i key.pem ${{ env.EC2_USERNAME }}@${{ env.EC2_HOST }} << 'ENDSSH'
+            docker pull lukecart/blackjack-isu-cs3321-s26:latest
+            docker stop blackjack || true
+            docker rm blackjack || true
+            docker run -d \
+              --name blackjack \
+              --restart unless-stopped \
+              --env DOPPLER_TOKEN=${{ secrets.DOPPLER_TOKEN }} \
+              -p 3000:3000 \
+              lukecart/blackjack-isu-cs3321-s26:latest
+          ENDSSH
+
+      - name: Clean up SSH key
+        if: always()
+        run: rm -f key.pem
