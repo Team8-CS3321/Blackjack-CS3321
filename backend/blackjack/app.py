@@ -10,6 +10,13 @@ import socketio
 from .game import GameManager, GamePhase
 from pathlib import Path
 
+# ── ChatGPT Client ────────────────────────────────────────────────────
+try:
+    chat = ChatGPTClient()
+except Exception as e:
+    print(f"[warn] ChatGPTClient init failed: {e}")
+    chat = None
+
 # ── App setup ────────────────────────────────────────────────────────
 app = Quart(
     __name__,
@@ -689,10 +696,3 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 3000)) # Port 3000 is default.
     print(f"\n  Blackjack server running on http://{host}:{port}\n")
     uvicorn.run(asgi_app, host=host, port=port)
-
-    # ── ChatGPT Client ────────────────────────────────────────────────────
-    try:
-        chat = ChatGPTClient()
-    except Exception as e:
-        print(f"[warn] ChatGPTClient init failed: {e}")
-        chat = None
