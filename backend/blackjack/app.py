@@ -19,7 +19,7 @@ except Exception as e:
 # ── App setup ────────────────────────────────────────────────────────
 app = Quart(
     __name__,
-    static_folder=str(Path(__file__).parent.parent / "frontend"),
+    static_folder=str(Path(__file__).parent.parent.parent / "frontend"),
     static_url_path=""
 )
 cors_origins = os.environ.get("CORS_ORIGINS", "*") # Change to domain for AWS deployment.
