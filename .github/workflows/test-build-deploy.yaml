@@ -61,7 +61,11 @@ jobs:
           echo "EC2_HOST=$(doppler secrets get EC2_HOST --plain --token ${{ secrets.DOPPLER_TOKEN }})" >> $GITHUB_ENV
           echo "AWS_EC2_USERNAME=$(doppler secrets get AWS_EC2_USERNAME --plain --token ${{ secrets.DOPPLER_TOKEN }})" >> $GITHUB_ENV
           doppler secrets get SSH_AWS_PEM --plain --token ${{ secrets.DOPPLER_TOKEN }} > aws-key.pem
+          # Ensure proper line endings and file permissions
+          dos2unix aws-key.pem 2>/dev/null || sed -i 's/\r$//' aws-key.pem
           chmod 600 aws-key.pem
+          # Verify key format
+          head -1 aws-key.pem | grep -q "BEGIN.*PRIVATE KEY" || (echo "Invalid key format" && exit 1)
 
       - name: Deploy to EC2 via SSH
         run: |
