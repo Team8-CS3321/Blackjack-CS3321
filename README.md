@@ -27,14 +27,22 @@ http://localhost:3000
 ## Docker
 
 ```bash
-# Build image
+# Build image (no secrets needed at build time)
 docker build -t blackjack-isu-cs3321-s26:latest .
 
-# Run with secrets (requires DOPPLER_TOKEN)
-docker run --env DOPPLER_TOKEN=<your-token> -p 3000:3000 blackjack-isu-cs3321-s26:latest
+# Run container (pass secrets at runtime)
+docker run \
+  --env DOPPLER_TOKEN=<your-doppler-token> \
+  --env HOST=0.0.0.0 \
+  --env PORT=3000 \
+  -p 3000:3000 \
+  blackjack-isu-cs3321-s26:latest
+
+# Or use docker-compose with a .env file
+# docker-compose up
 ```
 
-**Build Command:** `docker build -t blackjack-isu-cs3321-s26:latest .` 
+**Important:** `DOPPLER_TOKEN` must be passed at runtime (not build time). The container will inject secrets when it starts.
 
  ## Testing
  ```bash

@@ -10,16 +10,10 @@ import socketio
 from .game import GameManager, GamePhase
 from pathlib import Path
 
-# ── ChatGPT Client ────────────────────────────────────────────────────
-try:
-    chat = ChatGPTClient()
-except Exception as e:
-    print(f"[warn] ChatGPTClient init failed: {e}")
-    chat = None
 # ── App setup ────────────────────────────────────────────────────────
 app = Quart(
     __name__,
-    static_folder=str(Path(__file__).parent.parent.parent / "frontend"),
+    static_folder=str(Path(__file__).parent / "frontend"),
     static_url_path=""
 )
 cors_origins = os.environ.get("CORS_ORIGINS", "*") # Change to domain for AWS deployment.
@@ -691,6 +685,14 @@ async def singleplayer_start(sid, payload=None):
 if __name__ == "__main__":
     import uvicorn
 
-    port = int(os.environ.get("PORT", 3000))
-    print(f"\n  Blackjack server running on http://localhost:{port}\n")
-    uvicorn.run(asgi_app, host="0.0.0.0", port=port)
+    host = os.environ.get("HOST", "0.0.0.0")
+    port = int(os.environ.get("PORT", 3000)) # Port 3000 is default.
+    print(f"\n  Blackjack server running on http://{host}:{port}\n")
+    uvicorn.run(asgi_app, host=host, port=port)
+
+    # ── ChatGPT Client ────────────────────────────────────────────────────
+    try:
+        chat = ChatGPTClient()
+    except Exception as e:
+        print(f"[warn] ChatGPTClient init failed: {e}")
+        chat = None
