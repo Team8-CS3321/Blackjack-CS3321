@@ -275,6 +275,44 @@ def test_advance_to_next_player_finalizes_when_no_active_players(monkeypatch):
     assert room_game.phase == GamePhase.ROUND_COMPLETE
 
 
+def test_round_complete_response_includes_player_hands_with_bust_card(monkeypatch):
+    """Regression test for issue #46.
+
+    When the last remaining player busts, the round_complete payload must
+    include each player's full hand (including the card that caused the
+    bust) so the frontend can render it. Previously this response omitted
+    the players array entirely, leaving the frontend stuck on stale state.
+    """
+    from blackjack.rules_and_objects import Card
+
+    room_game = GameManager().create_game("ROOM1", sample_players())
+    room_game.phase = GamePhase.PLAYING
+
+    p1 = room_game.player_objects["p1"]
+    p2 = room_game.player_objects["p2"]
+
+    p1.is_stand = True
+    p1.hand = [Card("Hearts", "10"), Card("Clubs", "9")]
+    p2.hand = [Card("Hearts", "10"), Card("Clubs", "6"), Card("Spades", "9")]
+    p2.is_bust = True
+
+    monkeypatch.setattr(room_game.game, "finalize_round", lambda: {
+        "Alice": {"outcome": "win"},
+        "Bob": {"outcome": "lose"},
+    })
+    monkeypatch.setattr(room_game.game, "get_dealer_hand_value", lambda: 19)
+    room_game.game.dealer_hand = [Card("Spades", "10"), Card("Diamonds", "9")]
+
+    result = room_game.advance_to_next_player()
+
+    assert result["phase"] == "round_complete"
+    assert "players" in result
+    bob = next(p for p in result["players"] if p["username"] == "Bob")
+    assert bob["is_bust"] is True
+    assert len(bob["hand"]) == 3
+    assert "9 of Spades" in bob["hand"]
+
+
 def test_get_final_state_includes_full_dealer_hand(monkeypatch):
     room_game = GameManager().create_game("ROOM1", sample_players())
     room_game.game.dealer_hand = []

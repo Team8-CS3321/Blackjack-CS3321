@@ -201,19 +201,22 @@ class RoomGame:
 
         if active_players:
             return self.get_game_state()
-        
-        # All players done, dealer's turn
+
+        # All players done, dealer's turn. Build the response from
+        # get_game_state so the final player hands (including the card that
+        # caused the last player to bust) are included — the frontend reads
+        # payload.players to render hands on round_complete.
         self.phase = GamePhase.DEALER_TURN
         results = self.game.finalize_round()
         self.phase = GamePhase.ROUND_COMPLETE
-        
-        return {
-            "phase": self.phase.value,
-            "message": "Round complete",
-            "results": results,
-            "dealer_hand": [str(card) for card in self.game.dealer_hand],
-            "dealer_value": self.game.get_dealer_hand_value(),
-        }
+
+        state = self.get_game_state()
+        state["phase"] = self.phase.value
+        state["message"] = "Round complete"
+        state["results"] = results
+        state["dealer_hand"] = [str(card) for card in self.game.dealer_hand]
+        state["dealer_value"] = self.game.get_dealer_hand_value()
+        return state
     
     def reset_for_next_round(self, new_players: list[dict] | None = None) -> None:
         """Reset for a new round, preserving player_objects insertion order.
