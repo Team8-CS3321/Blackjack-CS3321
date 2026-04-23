@@ -312,8 +312,8 @@ async def ai_help(sid, payload=None):
     if not room:
         return {"error": "Room not found."}
 
-    player = next((p for p in room["players"] if p["id"] == sid), None)
-    if not player:
+    player_dict = next((p for p in room["players"] if p["id"] == sid), None)
+    if not player_dict:
         return {"error": "Player not found."}
 
     if chat is None:
@@ -338,8 +338,20 @@ async def ai_help(sid, payload=None):
             "for beginners, and one common mistake to avoid."
         )
 
+    # Get the actual player object from the game to access get_hand_string()
+    game = game_manager.get_game(current_room)
+    if not game:
+        return {"error": "No active game."}
+    
+    player_id = player_dict["player_id"]
+    player_obj = game.player_objects.get(player_id)
+    player_hand = player_obj.get_hand_string() if player_obj else "Unknown"
+
+    dealer_hand = game.game.get_dealer_hand_string()
+
     prompt = (
-        f"Player '{player['username']}' asks: {normalized_query}. "
+        f"Player '{player_dict['username']}' asks: {normalized_query}. "
+        f"Player hand: {player_hand}. Dealer hand: {dealer_hand}"
         "Answer in plain language for in-game help."
     )
 

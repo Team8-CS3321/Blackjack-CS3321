@@ -23,7 +23,7 @@ class ChatGPTClient:
         return response.choices[0].message.content
 
 
-    def getRecommendedMove(self, playerHand, dealerHand):
+    def getRecommendedMove(self, playerHand: str, dealerHand: str):
         return self.ask(f"I have {playerHand}, and the dealer has {dealerHand}. Should I hit, or stand?")
 
 
