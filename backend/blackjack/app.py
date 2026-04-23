@@ -243,9 +243,10 @@ async def room_join(sid, payload=None):
     )
     await broadcast_room_update(room_code)
 
-    # Spectator gets a snapshot of the in-flight game so the table renders for them.
+    # Spectator gets a snapshot of the current game state so the table renders correctly.
     if is_spectator and game:
-        await sio.emit("game:state", game.get_game_state(), to=sid)
+        state = game.get_final_state() if game.phase == GamePhase.ROUND_COMPLETE else game.get_game_state()
+        await sio.emit("game:state", state, to=sid)
 
     return {"success": True, "code": room_code, "player_id": player["player_id"], "spectator": is_spectator}
 

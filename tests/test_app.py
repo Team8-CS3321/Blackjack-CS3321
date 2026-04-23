@@ -519,12 +519,19 @@ def test_ai_help_success(monkeypatch):
 
     app_module.player_rooms["sid1"] = "ROOM1"
     app_module.rooms["ROOM1"] = {
-        "players": [{"id": "sid1", "username": "Luis"}]
+        "players": [{"id": "sid1", "username": "Luis", "player_id": "p1"}]
     }
+
+    fake_player = SimpleNamespace(get_hand_string=lambda: "Ace of Hearts, King of Spades")
+    fake_game = SimpleNamespace(
+        player_objects={"p1": fake_player},
+        game=SimpleNamespace(get_dealer_hand_string=lambda: "9 of Clubs")
+    )
 
     fake_chat = SimpleNamespace(ask=lambda prompt: " Hit on 11 versus dealer 10. ")
     monkeypatch.setattr("blackjack.app.chat", fake_chat)
     monkeypatch.setattr("blackjack.app.time.monotonic", lambda: 200.0)
+    monkeypatch.setattr("blackjack.app.game_manager.get_game", lambda room_code: fake_game)
 
     result = asyncio.run(app_module.ai_help("sid1", {"query": "what should I do?"}))
 
@@ -540,12 +547,19 @@ def test_ai_help_returns_error_on_empty_response(monkeypatch):
 
     app_module.player_rooms["sid1"] = "ROOM1"
     app_module.rooms["ROOM1"] = {
-        "players": [{"id": "sid1", "username": "Luis"}]
+        "players": [{"id": "sid1", "username": "Luis", "player_id": "p1"}]
     }
+
+    fake_player = SimpleNamespace(get_hand_string=lambda: "10 of Hearts, 6 of Spades")
+    fake_game = SimpleNamespace(
+        player_objects={"p1": fake_player},
+        game=SimpleNamespace(get_dealer_hand_string=lambda: "King of Clubs")
+    )
 
     fake_chat = SimpleNamespace(ask=lambda prompt: "   ")
     monkeypatch.setattr("blackjack.app.chat", fake_chat)
     monkeypatch.setattr("blackjack.app.time.monotonic", lambda: 300.0)
+    monkeypatch.setattr("blackjack.app.game_manager.get_game", lambda room_code: fake_game)
 
     result = asyncio.run(app_module.ai_help("sid1", {"query": "help"}))
 
@@ -755,6 +769,40 @@ def test_index_html_is_served_on_root():
 
     asyncio.run(_test())
 
+def test_room_join_spectator_gets_final_state_when_round_complete(monkeypatch):
+    app_module.rooms.clear()
+    app_module.player_rooms.clear()
+    app_module.player_info.clear()
 
+    app_module.player_info["sid2"] = {"player_id": "p2"}
+    app_module.rooms["ROOM1"] = {
+        "code": "ROOM1",
+        "host_id": "sid1",
+        "players": [{"id": "sid1", "username": "Luis", "player_id": "p1", "ready": False}],
+        "game_started": True,
+    }
 
+    fake_game = SimpleNamespace(
+        phase=app_module.GamePhase.ROUND_COMPLETE,
+        get_game_state=lambda: {"phase": "round_complete", "dealer_hand": ["hidden"]},
+        get_final_state=lambda: {"phase": "round_complete", "dealer_hand": ["10 of Hearts", "7 of Clubs"]},
+    )
 
+    mock_enter = AsyncMock()
+    mock_emit = AsyncMock()
+    mock_broadcast = AsyncMock()
+
+    monkeypatch.setattr("blackjack.app.sio.enter_room", mock_enter)
+    monkeypatch.setattr("blackjack.app.sio.emit", mock_emit)
+    monkeypatch.setattr("blackjack.app.broadcast_room_update", mock_broadcast)
+    monkeypatch.setattr("blackjack.app.game_manager.get_game", lambda code: fake_game)
+
+    result = asyncio.run(app_module.room_join("sid2", {"username": "Bob", "code": "ROOM1"}))
+
+    assert result["success"] is True
+    assert result["spectator"] is True
+
+    emits = mock_emit.await_args_list
+    game_state_calls = [call for call in emits if call.args and call.args[0] == "game:state"]
+    assert game_state_calls
+    assert game_state_calls[-1].args[1]["dealer_hand"] == ["10 of Hearts", "7 of Clubs"]
