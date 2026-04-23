@@ -106,6 +106,9 @@ class Player:
         """Get current hand value."""
         value, _ = hand_value(self.hand)
         return value
+
+    def get_hand_string(self):
+        return ', '.join([str(card) for card in self.hand])
     
     def hit(self, deck):
         """Draw a card from deck."""
@@ -163,6 +166,9 @@ class Game:
         """Get dealer's hand value."""
         value, _ = hand_value(self.dealer_hand)
         return value
+
+    def get_dealer_hand_string(self):
+        return ', '.join([str(card) for card in self.dealer_hand])
 
     def is_dealer_blackjack(self) -> bool:
         """Natural dealer blackjack: exactly two cards totaling 21."""
