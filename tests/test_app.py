@@ -29,6 +29,7 @@ from blackjack.app import (
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from blackjack.app import game_double_down
 import blackjack.app as app_module
 
 def setup_function():
@@ -529,6 +530,12 @@ def test_ai_help_success(monkeypatch):
     fake_game = SimpleNamespace(
         player_objects={"p1": fake_player},
         game=SimpleNamespace(get_dealer_hand_string=lambda: "10")
+    )
+
+    fake_player = SimpleNamespace(get_hand_string=lambda: "Ace of Hearts, King of Spades")
+    fake_game = SimpleNamespace(
+        player_objects={"p1": fake_player},
+        game=SimpleNamespace(get_dealer_hand_string=lambda: "9 of Clubs")
     )
 
     fake_player = SimpleNamespace(get_hand_string=lambda: "Ace of Hearts, King of Spades")

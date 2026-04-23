@@ -384,3 +384,45 @@ def test_reset_for_next_round_adds_pending_players(monkeypatch):
 
     assert "p3" in room_game.player_objects
     assert room_game.players_dict["p3"]["id"] == "sid3"
+
+def test_double_down_rejects_when_not_in_playing_phase():
+    room_game = GameManager().create_game("ROOM1", sample_players())
+    room_game.phase = GamePhase.WAITING_FOR_BETS
+
+    result = room_game.double_down("p1")
+
+    assert result["error"] == "Not in playing phase."
+
+
+def test_double_down_rejects_unknown_player():
+    room_game = GameManager().create_game("ROOM1", sample_players())
+    room_game.phase = GamePhase.PLAYING
+
+    result = room_game.double_down("bad_player")
+
+    assert result["error"] == "Player not found."
+
+
+def test_double_down_rejects_when_not_allowed(monkeypatch):
+    room_game = GameManager().create_game("ROOM1", sample_players())
+    room_game.phase = GamePhase.PLAYING
+    player = room_game.player_objects["p1"]
+
+    monkeypatch.setattr(player, "double_down", lambda deck: False)
+
+    result = room_game.double_down("p1")
+
+    assert result["error"] == "Double down not allowed."
+
+
+def test_double_down_success_advances_turn(monkeypatch):
+    room_game = GameManager().create_game("ROOM1", sample_players())
+    room_game.phase = GamePhase.PLAYING
+    player = room_game.player_objects["p1"]
+
+    monkeypatch.setattr(player, "double_down", lambda deck: True)
+    monkeypatch.setattr(room_game, "advance_to_next_player", lambda: {"phase": "dealer_turn"})
+
+    result = room_game.double_down("p1")
+
+    assert result == {"phase": "dealer_turn"}

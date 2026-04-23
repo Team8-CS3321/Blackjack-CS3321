@@ -119,6 +119,33 @@ class Player:
     def stand(self):
         """Player chooses to stand."""
         self.is_stand = True
+   
+    def can_double_down(self) -> bool:
+        """A player can double down only on their initial two cards totaling 9, 10, or 11,
+        and only if they can afford to match their current bet."""
+        return (
+            len(self.hand) == 2
+            and self.get_hand_value() in (9, 10, 11)
+            and self.bet > 0
+            and self.balance >= self.bet
+            and not self.is_bust
+            and not self.is_stand
+        )
+
+    def double_down(self, deck) -> bool:
+        """Double the current bet, draw exactly one card, then stand."""
+        if not self.can_double_down():
+            return False
+
+        self.balance -= self.bet
+        self.bet *= 2
+        self.draw_from_deck(deck)
+
+        if self.get_hand_value() > 21:
+            self.is_bust = True
+
+        self.is_stand = True
+        return True
     
 class Game:
     def __init__(self):

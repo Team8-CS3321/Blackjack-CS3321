@@ -589,6 +589,25 @@ async def game_stand(sid, *args):
     await sio.emit("game:state", result, room=current_room)
     return result
 
+@sio.on("game:double-down")
+async def game_double_down(sid, *args):
+    """Player doubles down."""
+    current_room = player_rooms.get(sid)
+    if not current_room:
+        return {"error": "Not in a room."}
+
+    game = game_manager.get_game(current_room)
+    if not game:
+        return {"error": "No active game."}
+
+    player_id = player_info[sid]["player_id"]
+    result = game.double_down(player_id)
+
+    if "error" in result:
+        return result
+
+    await sio.emit("game:state", result, room=current_room)
+    return result
 
 @sio.on("game:get-state")
 async def game_get_state(sid, *args):
