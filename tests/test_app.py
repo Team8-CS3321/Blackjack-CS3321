@@ -515,22 +515,25 @@ def test_ai_help_rejects_when_on_cooldown(monkeypatch):
 def test_ai_help_success(monkeypatch):
     app_module.rooms.clear()
     app_module.player_rooms.clear()
+    app_module.player_info.clear()
     app_module.ai_help_last_request_at.clear()
     app_module.ai_help_in_flight.clear()
 
     app_module.player_rooms["sid1"] = "ROOM1"
+    app_module.player_info["sid1"] = {"player_id": "p1"}
     app_module.rooms["ROOM1"] = {
         "players": [{"id": "sid1", "username": "Luis", "player_id": "p1"}]
     }
-
-    fake_player = SimpleNamespace(get_hand_string=lambda: "Ace of Hearts, King of Spades")
+    
+    fake_player = SimpleNamespace(get_hand_string=lambda: "A, 10")
     fake_game = SimpleNamespace(
         player_objects={"p1": fake_player},
-        game=SimpleNamespace(get_dealer_hand_string=lambda: "9 of Clubs")
+        game=SimpleNamespace(get_dealer_hand_string=lambda: "10")
     )
 
     fake_chat = SimpleNamespace(ask=lambda prompt: " Hit on 11 versus dealer 10. ")
     monkeypatch.setattr("blackjack.app.chat", fake_chat)
+    monkeypatch.setattr("blackjack.app.game_manager.get_game", lambda room: fake_game)
     monkeypatch.setattr("blackjack.app.time.monotonic", lambda: 200.0)
     monkeypatch.setattr("blackjack.app.game_manager.get_game", lambda room_code: fake_game)
 
@@ -543,22 +546,25 @@ def test_ai_help_success(monkeypatch):
 def test_ai_help_returns_error_on_empty_response(monkeypatch):
     app_module.rooms.clear()
     app_module.player_rooms.clear()
+    app_module.player_info.clear()
     app_module.ai_help_last_request_at.clear()
     app_module.ai_help_in_flight.clear()
 
     app_module.player_rooms["sid1"] = "ROOM1"
+    app_module.player_info["sid1"] = {"player_id": "p1"}
     app_module.rooms["ROOM1"] = {
         "players": [{"id": "sid1", "username": "Luis", "player_id": "p1"}]
     }
 
-    fake_player = SimpleNamespace(get_hand_string=lambda: "10 of Hearts, 6 of Spades")
+    fake_player = SimpleNamespace(get_hand_string=lambda: "A, 10")
     fake_game = SimpleNamespace(
         player_objects={"p1": fake_player},
-        game=SimpleNamespace(get_dealer_hand_string=lambda: "King of Clubs")
+        game=SimpleNamespace(get_dealer_hand_string=lambda: "10")
     )
 
     fake_chat = SimpleNamespace(ask=lambda prompt: "   ")
     monkeypatch.setattr("blackjack.app.chat", fake_chat)
+    monkeypatch.setattr("blackjack.app.game_manager.get_game", lambda room: fake_game)
     monkeypatch.setattr("blackjack.app.time.monotonic", lambda: 300.0)
     monkeypatch.setattr("blackjack.app.game_manager.get_game", lambda room_code: fake_game)
 
