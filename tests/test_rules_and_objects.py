@@ -32,6 +32,32 @@ def test_deck_builds_52_cards():
     assert len(deck.cards) == 52
 
 
+def test_deck_is_shuffled_on_construction():
+    """Regression test for issue #51.
+
+    A freshly constructed Deck must not be in the deterministic build order
+    (Hearts 2..Ace, Diamonds 2..Ace, Clubs 2..Ace, Spades 2..Ace). Across
+    several independent decks at least one must differ from that order —
+    otherwise no shuffle happened. Probability of false failure with three
+    independent 52-card shuffles landing in the exact build order is
+    effectively zero.
+    """
+    built_order = [f"{rank} of {suit}"
+                   for suit in ["Hearts", "Diamonds", "Clubs", "Spades"]
+                   for rank in ["2", "3", "4", "5", "6", "7", "8", "9",
+                                "10", "Jack", "Queen", "King", "Ace"]]
+    decks = [[str(c) for c in Deck().cards] for _ in range(3)]
+    assert any(d != built_order for d in decks)
+
+
+def test_two_fresh_decks_have_different_order():
+    """Two independent Deck constructions should (almost certainly) produce
+    different card orders; if they match, the RNG is effectively frozen."""
+    a = [str(c) for c in Deck().cards]
+    b = [str(c) for c in Deck().cards]
+    assert a != b
+
+
 def test_draw_card_reduces_deck_size():
     deck = Deck()
     original_size = len(deck.cards)
