@@ -1,4 +1,5 @@
 import random
+from time import time
 
 SUITS = ['Hearts', 'Diamonds', 'Clubs', 'Spades']
 RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'Jack', 'Queen', 'King', 'Ace']
@@ -42,8 +43,10 @@ class Deck:
     def __init__(self):
         self.cards = []
         self.build_deck()
+        self.shuffle()
 
     def shuffle(self):
+        random.seed(time())
         random.shuffle(self.cards)
 
     def build_deck(self):
