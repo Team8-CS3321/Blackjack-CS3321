@@ -29,6 +29,7 @@ from blackjack.app import (
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from blackjack.app import game_double_down
 import blackjack.app as app_module
 
 def setup_function():
@@ -806,3 +807,40 @@ def test_room_join_spectator_gets_final_state_when_round_complete(monkeypatch):
     game_state_calls = [call for call in emits if call.args and call.args[0] == "game:state"]
     assert game_state_calls
     assert game_state_calls[-1].args[1]["dealer_hand"] == ["10 of Hearts", "7 of Clubs"]
+
+def test_game_double_down_requires_room_membership():
+    result = asyncio.run(game_double_down("sid1"))
+    assert result["error"] == "Not in a room."
+
+
+def test_game_double_down_requires_active_game(monkeypatch):
+    app_module.player_rooms.clear()
+    app_module.player_rooms["sid1"] = "ROOM1"
+
+    monkeypatch.setattr("blackjack.app.game_manager.get_game", lambda room: None)
+
+    result = asyncio.run(game_double_down("sid1"))
+
+    assert result["error"] == "No active game."
+
+
+def test_game_double_down_success_emits_state(monkeypatch):
+    app_module.player_rooms.clear()
+    app_module.player_info.clear()
+
+    app_module.player_rooms["sid1"] = "ROOM1"
+    app_module.player_info["sid1"] = {"player_id": "p1"}
+
+    fake_game = SimpleNamespace(
+        double_down=lambda player_id: {"phase": "dealer_turn"}
+    )
+
+    mock_emit = AsyncMock()
+
+    monkeypatch.setattr("blackjack.app.game_manager.get_game", lambda room: fake_game)
+    monkeypatch.setattr("blackjack.app.sio.emit", mock_emit)
+
+    result = asyncio.run(game_double_down("sid1"))
+
+    assert result == {"phase": "dealer_turn"}
+    mock_emit.assert_awaited_once_with("game:state", {"phase": "dealer_turn"}, room="ROOM1")

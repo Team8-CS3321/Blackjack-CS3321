@@ -192,6 +192,20 @@ class RoomGame:
         player.stand()
         return self.advance_to_next_player()
     
+    def double_down(self, player_id: str) -> dict:
+        """Player doubles down: double bet, take one card, and end turn."""
+        if self.phase != GamePhase.PLAYING:
+            return {"error": "Not in playing phase."}
+
+        player = self.player_objects.get(player_id)
+        if not player:
+            return {"error": "Player not found."}
+
+        if not player.double_down(self.game.deck):
+            return {"error": "Double down not allowed."}
+
+        return self.advance_to_next_player()
+
     def advance_to_next_player(self) -> dict:
         """Move to next active player or dealer."""
         self.current_player_index = self._next_active_index(self.current_player_index + 1)

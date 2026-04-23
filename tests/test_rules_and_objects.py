@@ -383,3 +383,61 @@ def test_finalize_round_marks_bust_player_as_bust(monkeypatch):
 
     assert results["Luis"]["outcome"] == "lose"
     assert results["Luis"]["hand_value"] == "BUST"
+
+def test_player_can_double_down_on_two_card_nine():
+    player = Player("Luis")
+    player.bet = 50
+    player.balance = 200
+    player.hand = [Card("Hearts", "4"), Card("Spades", "5")]
+
+    assert player.can_double_down() is True
+
+
+def test_player_cannot_double_down_on_wrong_total():
+    player = Player("Luis")
+    player.bet = 50
+    player.balance = 200
+    player.hand = [Card("Hearts", "10"), Card("Spades", "2")]
+
+    assert player.can_double_down() is False
+
+
+def test_player_cannot_double_down_with_more_than_two_cards():
+    player = Player("Luis")
+    player.bet = 50
+    player.balance = 200
+    player.hand = [Card("Hearts", "2"), Card("Spades", "3"), Card("Clubs", "4")]
+
+    assert player.can_double_down() is False
+
+
+def test_player_double_down_doubles_bet_draws_once_and_stands():
+    player = Player("Luis")
+    player.bet = 50
+    player.balance = 200
+    player.hand = [Card("Hearts", "4"), Card("Spades", "5")]
+    deck = FixedDeck([Card("Clubs", "10")])
+
+    result = player.double_down(deck)
+
+    assert result is True
+    assert player.bet == 100
+    assert player.balance == 150
+    assert len(player.hand) == 3
+    assert player.is_stand is True
+    assert player.is_bust is False
+
+
+def test_player_double_down_can_bust():
+    player = Player("Luis")
+    player.bet = 50
+    player.balance = 200
+    player.hand = [Card("Hearts", "5"), Card("Spades", "6")]  # total 11
+    deck = FixedDeck([Card("Clubs", "King")])
+
+    result = player.double_down(deck)
+
+    assert result is True
+    assert player.is_bust is False
+    assert player.get_hand_value() == 21
+    assert player.is_stand is True
