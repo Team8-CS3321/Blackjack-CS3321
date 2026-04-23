@@ -138,6 +138,7 @@ def test_generate_room_code_avoids_existing_room_codes(monkeypatch):
     code = generate_room_code()
 
     assert code == "FGHIJ"
+
 def teardown_function():
     rooms.clear()
     player_rooms.clear()
@@ -523,7 +524,7 @@ def test_ai_help_success(monkeypatch):
     app_module.rooms["ROOM1"] = {
         "players": [{"id": "sid1", "username": "Luis", "player_id": "p1"}]
     }
-
+    
     fake_player = SimpleNamespace(get_hand_string=lambda: "A, 10")
     fake_game = SimpleNamespace(
         player_objects={"p1": fake_player},
@@ -534,6 +535,7 @@ def test_ai_help_success(monkeypatch):
     monkeypatch.setattr("blackjack.app.chat", fake_chat)
     monkeypatch.setattr("blackjack.app.game_manager.get_game", lambda room: fake_game)
     monkeypatch.setattr("blackjack.app.time.monotonic", lambda: 200.0)
+    monkeypatch.setattr("blackjack.app.game_manager.get_game", lambda room_code: fake_game)
 
     result = asyncio.run(app_module.ai_help("sid1", {"query": "what should I do?"}))
 
@@ -564,6 +566,7 @@ def test_ai_help_returns_error_on_empty_response(monkeypatch):
     monkeypatch.setattr("blackjack.app.chat", fake_chat)
     monkeypatch.setattr("blackjack.app.game_manager.get_game", lambda room: fake_game)
     monkeypatch.setattr("blackjack.app.time.monotonic", lambda: 300.0)
+    monkeypatch.setattr("blackjack.app.game_manager.get_game", lambda room_code: fake_game)
 
     result = asyncio.run(app_module.ai_help("sid1", {"query": "help"}))
 
