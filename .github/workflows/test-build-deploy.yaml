@@ -6,8 +6,8 @@ on:
 
 jobs:
 
-  # ── Job 1: Test ────────────────────────────────────────────────────
-  test:
+  # ── Job 1: Coverage Report ────────────────────────────────────────────────────
+  coverage:
     runs-on: ubuntu-latest
 
     steps:
@@ -16,17 +16,19 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
+        with:
+          enable cache: true
 
       - name: Install dependencies
         run: uv sync --frozen
 
-      - name: Run tests
-        run: uv run pytest
+      - name: Run coverage
+        run: uv run pytest --cov=backend --cov-fail-under=80 # Enforce 80% coverage
 
   # ── Job 2: Build & Push to Docker Hub ─────────────────────────────
   build:
     runs-on: ubuntu-latest
-    needs: test  # Only runs if test job passes
+    needs: coverage  # Only runs if test job passes
 
     steps:
       - name: Checkout code
@@ -57,19 +59,21 @@ jobs:
         uses: dopplerhq/cli-action@v3
 
       - name: Fetch secrets from Doppler
-        run: |
-          echo "EC2_HOST=$(doppler secrets get EC2_HOST --plain --token ${{ secrets.DOPPLER_TOKEN }})" >> $GITHUB_ENV
-          echo "AWS_EC2_USERNAME=$(doppler secrets get AWS_EC2_USERNAME --plain --token ${{ secrets.DOPPLER_TOKEN }})" >> $GITHUB_ENV
-          doppler secrets get SSH_AWS_PEM --plain --token ${{ secrets.DOPPLER_TOKEN }} > aws-key.pem
-          # Ensure proper line endings and file permissions
-          dos2unix aws-key.pem 2>/dev/null || sed -i 's/\r$//' aws-key.pem
-          chmod 600 aws-key.pem
-          # Verify key format
-          head -1 aws-key.pem | grep -q "BEGIN.*PRIVATE KEY" || (echo "Invalid key format" && exit 1)
+        uses: dopplerhq/secrets-fetch-action@v1.2.0
+        id: doppler
+        with:
+          doppler-token: ${{ secrets.DOPPLER_TOKEN }}
 
-      - name: Deploy to EC2 via SSH
-        run: |
-          ssh -o StrictHostKeyChecking=no -i aws-key.pem ${{ env.AWS_EC2_USERNAME }}@${{ env.EC2_HOST }} << 'EOF'
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@master
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        with:
+          host: ${{ steps.doppler.outputs.EC2_HOST }}
+          username: ${{ steps.doppler.outputs.AWS_EC2_USERNAME }}
+          key: ${{ steps.doppler.outputs.SSH_AWS_PEM }}
+          envs: DOPPLER_TOKEN
+          script: |
             docker pull lukecart/blackjack-isu-cs3321-s26:latest
             docker stop blackjack || true
             docker rm blackjack || true
@@ -79,8 +83,3 @@ jobs:
               --env DOPPLER_TOKEN=${{ secrets.DOPPLER_TOKEN }} \
               -p 80:3000 \
               lukecart/blackjack-isu-cs3321-s26:latest
-          EOF
-
-      - name: Clean up PEM file
-        if: always()
-        run: rm -f aws-key.pem
