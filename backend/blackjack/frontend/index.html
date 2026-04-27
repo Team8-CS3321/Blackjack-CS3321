@@ -130,7 +130,7 @@
       background: transparent;
       color: var(--green);
       border: 2px solid var(--green);
-      padding: 8px 24px;
+      padding: 8px 16px;
       cursor: pointer;
       transition: all 0.15s;
     }
@@ -380,6 +380,21 @@
     .results-panel .lose { color: var(--red); }
     .results-panel .push { color: var(--amber); }
 
+    .split-hand {
+      border: 1px dashed var(--dim-green);
+      padding: 4px 6px;
+      margin: 4px 0;
+    }
+    .split-hand-active {
+      border-color: var(--amber);
+      box-shadow: 0 0 6px rgba(255,170,0,0.35);
+    }
+    .split-hand-label {
+      font-size: 14px;
+      color: var(--amber);
+      margin-bottom: 2px;
+    }
+
     .scanline {
       pointer-events: none;
       position: fixed;
@@ -485,6 +500,8 @@
                 <button class="btn" id="betBtn" onclick="placeBet()" disabled>[ PLACE BET ]</button>
                 <button class="btn" id="hitBtn" onclick="hit()" disabled>[ HIT ]</button>
                 <button class="btn btn-amber" id="standBtn" onclick="stand()" disabled>[ STAND ]</button>
+                <button class="btn btn-amber" id="doubleBtn" onclick="doubleDown()" disabled>[ DOUBLE ]</button>
+                <button class="btn btn-amber" id="splitBtn" onclick="split()" disabled>[ SPLIT ]</button>
               </div>
             </div>
           </div>
@@ -579,6 +596,8 @@
     const $betBtn      = document.getElementById("betBtn");
     const $hitBtn      = document.getElementById("hitBtn");
     const $standBtn    = document.getElementById("standBtn");
+    const $doubleBtn   = document.getElementById("doubleBtn");
+    const $splitBtn    = document.getElementById("splitBtn");
     const $startGameBtn = document.getElementById("startGameBtn");
     const $nextRoundBtn = document.getElementById("nextRoundBtn");
     const $chipRow     = document.getElementById("chipRow");
@@ -969,6 +988,18 @@
       });
     }
 
+    function doubleDown() {
+      socket.emit("game:double-down", (res) => {
+        if (res && res.error) appendChat(null, "Double down: " + res.error);
+      });
+    }
+
+    function split() {
+      socket.emit("game:split", (res) => {
+        if (res && res.error) appendChat(null, "Split: " + res.error);
+      });
+    }
+
     // Normalize server payloads. Hit/Stand sometimes emit the full state,
     // sometimes emit a round-complete dict with `results` + full dealer hand.
     function applyGameState(payload) {
@@ -1041,15 +1072,54 @@
         const classes = ["seat"];
         if (i === activeIndex && phase === "playing") classes.push("active");
         if (p.player_id === myPlayerId) classes.push("me");
-        const cards = (p.hand || []).map(renderCard).join("") || '<span style="color:var(--dim-green)">—</span>';
         const status = seatStatus(p, i, phase, activeIndex);
-        const valueStr = (p.hand_value !== null && p.hand_value !== undefined) ? p.hand_value : (p.is_bust ? "BUST" : "");
+
+        // Check if this player has split hands
+        const hasSplit = Array.isArray(p.split_hands) && p.split_hands.length > 0;
+
+        let handsHTML = "";
+        if (hasSplit) {
+          // Render each split hand separately
+          handsHTML = p.split_hands.map((sh, si) => {
+            const isActiveHand = p.active_split_hand_index === si && i === activeIndex && phase === "playing";
+            const handCards = (sh.hand || []).map((c, ci) => {
+              // Double-down hidden card: last card hidden while player is still active
+              if (sh.doubled_down && ci === sh.hand.length - 1 && (sh.is_stand || sh.is_bust || phase !== "playing" || i !== activeIndex)) {
+                return renderCard(c);
+              }
+              if (sh.doubled_down && ci === sh.hand.length - 1 && i === activeIndex && phase === "playing") {
+                return renderCardBack();
+              }
+              return renderCard(c);
+            }).join("") || '<span style="color:var(--dim-green)">—</span>';
+            const handValue = sh.hand_value !== null && sh.hand_value !== undefined ? sh.hand_value : (sh.is_bust ? "BUST" : "");
+            return `<div class="split-hand${isActiveHand ? ' split-hand-active' : ''}">
+              <div class="split-hand-label">HAND ${si + 1}${sh.is_bust ? ' — BUST' : sh.is_stand ? ' — STAND' : ''}</div>
+              <div class="hand-row">${handCards}</div>
+              <div>Value: ${handValue}</div>
+            </div>`;
+          }).join("");
+        } else {
+          // Normal single hand — render cards, last card hidden if doubled down and still active
+          const rawCards = p.hand || [];
+          const cardHTML = rawCards.map((c, ci) => {
+            if (p.doubled_down && ci === rawCards.length - 1) {
+              // Show hidden only while player is actively playing this turn
+              if (i === activeIndex && phase === "playing" && !p.is_stand && !p.is_bust) {
+                return renderCardBack();
+              }
+            }
+            return renderCard(c);
+          }).join("") || '<span style="color:var(--dim-green)">—</span>';
+          const valueStr = (p.hand_value !== null && p.hand_value !== undefined) ? p.hand_value : (p.is_bust ? "BUST" : "");
+          handsHTML = `<div class="hand-row">${cardHTML}</div><div>Value: ${valueStr}</div>`;
+        }
+
         return `
           <div class="${classes.join(' ')}">
             <div class="seat-name">♠ ${escapeHtml(p.username)}${p.player_id === myPlayerId ? ' (YOU)' : ''}</div>
-            <div>Chips: ${p.balance} | Bet: ${p.bet}</div>
-            <div class="hand-row">${cards}</div>
-            <div>Value: ${valueStr}</div>
+            <div>Chips: ${p.balance} | Bet: ${p.bet}${p.doubled_down || hasSplit ? ' <span style="color:var(--amber)">[×2]</span>' : ''}</div>
+            ${handsHTML}
             <div class="seat-status ${status.cls}">${escapeHtml(status.text)}</div>
           </div>
         `;
@@ -1121,6 +1191,18 @@
       return "Waiting...";
     }
 
+    function computeHandValue(hand) {
+      let value = 0, aces = 0;
+      for (const card of hand) {
+        const rank = card.split(" of ")[0];
+        if (["Jack", "Queen", "King"].includes(rank)) { value += 10; }
+        else if (rank === "Ace") { value += 11; aces++; }
+        else { value += parseInt(rank, 10); }
+      }
+      while (value > 21 && aces > 0) { value -= 10; aces--; }
+      return value;
+    }
+
     function updateControlGating(phase, players, activeIndex) {
       const me = players.find((p) => p.player_id === myPlayerId);
       const canBet = phase === "waiting_for_bets" && me && me.bet === 0;
@@ -1137,6 +1219,28 @@
 
       $hitBtn.disabled = !isMyTurn;
       $standBtn.disabled = !isMyTurn;
+
+      // Double down: only on first action (exactly 2 cards), enough balance, and hand totals 9/10/11
+      const canDouble = isMyTurn
+        && me
+        && Array.isArray(me.hand)
+        && me.hand.length === 2
+        && me.balance >= me.bet
+        && [9, 10, 11].includes(computeHandValue(me.hand));
+
+      $doubleBtn.disabled = !canDouble;
+
+      // Split: exactly 2 cards of the same rank, enough balance
+      const canSplit = isMyTurn
+        && me
+        && Array.isArray(me.hand)
+        && me.hand.length === 2
+        && (() => {
+          const rank0 = me.hand[0].split(" of ")[0];
+          const rank1 = me.hand[1].split(" of ")[0];
+          return rank0 === rank1 && me.balance >= me.bet;
+        })();
+      $splitBtn.disabled = !canSplit;
     }
 
     function iAmHost() {

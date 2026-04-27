@@ -609,6 +609,26 @@ async def game_double_down(sid, *args):
     await sio.emit("game:state", result, room=current_room)
     return result
 
+@sio.on("game:split")
+async def game_split(sid, *args):
+    """Player splits a pair."""
+    current_room = player_rooms.get(sid)
+    if not current_room:
+        return {"error": "Not in a room."}
+
+    game = game_manager.get_game(current_room)
+    if not game:
+        return {"error": "No active game."}
+
+    player_id = player_info[sid]["player_id"]
+    result = game.split(player_id)
+
+    if "error" in result:
+        return result
+
+    await sio.emit("game:state", result, room=current_room)
+    return result
+
 @sio.on("game:get-state")
 async def game_get_state(sid, *args):
     """Get current game state."""
