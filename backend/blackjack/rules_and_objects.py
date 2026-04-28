@@ -75,6 +75,7 @@ class Player:
         self.is_bust = False
         self.is_stand = False
         self.is_blackjack = False
+        self.doubled_down = False
         self.split_hands = []  # [{"hand": [], "bet": int, "is_bust": bool, "is_stand": bool, "doubled_down": bool}]
         self.active_split_hand_index = 0
 
@@ -99,6 +100,7 @@ class Player:
         self.is_bust = False
         self.is_stand = False
         self.is_blackjack = False
+        self.doubled_down = False
         self.split_hands = []
         self.active_split_hand_index = 0
 
@@ -171,6 +173,7 @@ class Player:
         self.balance -= self.bet
         self.bet *= 2
         self.draw_from_deck(deck)
+        self.doubled_down = True
 
         if self.get_hand_value() > 21:
             self.is_bust = True

@@ -1083,11 +1083,7 @@
           handsHTML = p.split_hands.map((sh, si) => {
             const isActiveHand = p.active_split_hand_index === si && i === activeIndex && phase === "playing";
             const handCards = (sh.hand || []).map((c, ci) => {
-              // Double-down hidden card: last card hidden while player is still active
-              if (sh.doubled_down && ci === sh.hand.length - 1 && (sh.is_stand || sh.is_bust || phase !== "playing" || i !== activeIndex)) {
-                return renderCard(c);
-              }
-              if (sh.doubled_down && ci === sh.hand.length - 1 && i === activeIndex && phase === "playing") {
+              if (sh.doubled_down && ci === sh.hand.length - 1 && phase !== "round_complete") {
                 return renderCardBack();
               }
               return renderCard(c);
@@ -1103,11 +1099,8 @@
           // Normal single hand — render cards, last card hidden if doubled down and still active
           const rawCards = p.hand || [];
           const cardHTML = rawCards.map((c, ci) => {
-            if (p.doubled_down && ci === rawCards.length - 1) {
-              // Show hidden only while player is actively playing this turn
-              if (i === activeIndex && phase === "playing" && !p.is_stand && !p.is_bust) {
-                return renderCardBack();
-              }
+            if (p.doubled_down && ci === rawCards.length - 1 && phase !== "round_complete") {
+              return renderCardBack();
             }
             return renderCard(c);
           }).join("") || '<span style="color:var(--dim-green)">—</span>';
