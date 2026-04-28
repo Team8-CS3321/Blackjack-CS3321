@@ -369,6 +369,7 @@ class RoomGame:
                 "is_bust": player_obj.is_bust,
                 "is_stand": player_obj.is_stand,
                 "is_blackjack": player_obj.is_blackjack,
+                "doubled_down": player_obj.doubled_down,
             }
             if player_obj.split_hands:
                 state["split_hands"] = [
