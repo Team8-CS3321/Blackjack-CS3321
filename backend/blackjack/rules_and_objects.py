@@ -75,6 +75,8 @@ class Player:
         self.is_bust = False
         self.is_stand = False
         self.is_blackjack = False
+        self.split_hands = []  # [{"hand": [], "bet": int, "is_bust": bool, "is_stand": bool, "doubled_down": bool}]
+        self.active_split_hand_index = 0
 
     def draw_from_deck(self, deck):
         card = deck.draw_card()
@@ -97,6 +99,8 @@ class Player:
         self.is_bust = False
         self.is_stand = False
         self.is_blackjack = False
+        self.split_hands = []
+        self.active_split_hand_index = 0
 
     def check_blackjack(self) -> bool:
         """Natural blackjack: exactly two cards totaling 21."""
@@ -131,6 +135,33 @@ class Player:
             and not self.is_bust
             and not self.is_stand
         )
+
+    def can_split(self) -> bool:
+        """Can split: exactly 2 cards of the same rank, enough balance to match bet."""
+        return (
+            len(self.hand) == 2
+            and self.hand[0].rank == self.hand[1].rank
+            and self.bet > 0
+            and self.balance >= self.bet
+            and not self.is_bust
+            and not self.is_stand
+        )
+
+    def perform_split(self, deck) -> bool:
+        """Split the hand into two hands and deal one card to each."""
+        if not self.can_split():
+            return False
+        card1, card2 = self.hand[0], self.hand[1]
+        split_bet = self.bet
+        self.balance -= self.bet  # Deduct second bet (first was deducted when placing)
+        self.hand = []
+        self.bet = 0  # Main hand has no bet; each split hand carries its own
+        self.split_hands = [
+            {"hand": [card1, deck.draw_card()], "bet": split_bet, "is_bust": False, "is_stand": False, "doubled_down": False},
+            {"hand": [card2, deck.draw_card()], "bet": split_bet, "is_bust": False, "is_stand": False, "doubled_down": False},
+        ]
+        self.active_split_hand_index = 0
+        return True
 
     def double_down(self, deck) -> bool:
         """Double the current bet, draw exactly one card, then stand."""

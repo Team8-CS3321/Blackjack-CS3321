@@ -441,3 +441,154 @@ def test_player_double_down_can_bust():
     assert player.is_bust is False
     assert player.get_hand_value() == 21
     assert player.is_stand is True
+
+
+# ── Split tests ──────────────────────────────────────────────────────────────
+
+def test_player_reset_hand_clears_split_state():
+    player = Player("Luis")
+    player.split_hands = [{"hand": [], "bet": 50, "is_bust": False, "is_stand": False, "doubled_down": False}]
+    player.active_split_hand_index = 1
+
+    player.reset_hand()
+
+    assert player.split_hands == []
+    assert player.active_split_hand_index == 0
+
+
+def test_player_can_split_on_matching_ranks():
+    player = Player("Luis")
+    player.bet = 100
+    player.balance = 500
+    player.hand = [Card("Hearts", "8"), Card("Spades", "8")]
+
+    assert player.can_split() is True
+
+
+def test_player_cannot_split_on_different_ranks():
+    player = Player("Luis")
+    player.bet = 100
+    player.balance = 500
+    player.hand = [Card("Hearts", "8"), Card("Spades", "9")]
+
+    assert player.can_split() is False
+
+
+def test_player_cannot_split_with_more_than_two_cards():
+    player = Player("Luis")
+    player.bet = 100
+    player.balance = 500
+    player.hand = [Card("Hearts", "8"), Card("Spades", "8"), Card("Clubs", "8")]
+
+    assert player.can_split() is False
+
+
+def test_player_cannot_split_with_insufficient_balance():
+    player = Player("Luis")
+    player.bet = 100
+    player.balance = 50
+    player.hand = [Card("Hearts", "8"), Card("Spades", "8")]
+
+    assert player.can_split() is False
+
+
+def test_player_cannot_split_after_bust():
+    player = Player("Luis")
+    player.bet = 100
+    player.balance = 500
+    player.hand = [Card("Hearts", "8"), Card("Spades", "8")]
+    player.is_bust = True
+
+    assert player.can_split() is False
+
+
+def test_player_cannot_split_after_stand():
+    player = Player("Luis")
+    player.bet = 100
+    player.balance = 500
+    player.hand = [Card("Hearts", "8"), Card("Spades", "8")]
+    player.is_stand = True
+
+    assert player.can_split() is False
+
+
+def test_perform_split_creates_two_hands_each_with_two_cards():
+    player = Player("Luis")
+    player.bet = 100
+    player.balance = 500
+    player.hand = [Card("Hearts", "8"), Card("Spades", "8")]
+    deck = FixedDeck([Card("Clubs", "King"), Card("Diamonds", "3")])
+
+    result = player.perform_split(deck)
+
+    assert result is True
+    assert len(player.split_hands) == 2
+    assert len(player.split_hands[0]["hand"]) == 2
+    assert len(player.split_hands[1]["hand"]) == 2
+
+
+def test_perform_split_preserves_original_cards_in_split_hands():
+    player = Player("Luis")
+    player.bet = 100
+    player.balance = 500
+    card1 = Card("Hearts", "8")
+    card2 = Card("Spades", "8")
+    player.hand = [card1, card2]
+    deck = FixedDeck([Card("Clubs", "King"), Card("Diamonds", "3")])
+
+    player.perform_split(deck)
+
+    assert player.split_hands[0]["hand"][0] is card1
+    assert player.split_hands[1]["hand"][0] is card2
+
+
+def test_perform_split_deducts_second_bet_from_balance():
+    player = Player("Luis")
+    player.bet = 100
+    player.balance = 500
+    player.hand = [Card("Hearts", "8"), Card("Spades", "8")]
+    deck = FixedDeck([Card("Clubs", "King"), Card("Diamonds", "3")])
+
+    player.perform_split(deck)
+
+    assert player.balance == 400
+
+
+def test_perform_split_clears_main_hand_and_zeroes_bet():
+    player = Player("Luis")
+    player.bet = 100
+    player.balance = 500
+    player.hand = [Card("Hearts", "8"), Card("Spades", "8")]
+    deck = FixedDeck([Card("Clubs", "King"), Card("Diamonds", "3")])
+
+    player.perform_split(deck)
+
+    assert player.hand == []
+    assert player.bet == 0
+    assert player.active_split_hand_index == 0
+
+
+def test_perform_split_each_hand_carries_original_bet():
+    player = Player("Luis")
+    player.bet = 100
+    player.balance = 500
+    player.hand = [Card("Hearts", "8"), Card("Spades", "8")]
+    deck = FixedDeck([Card("Clubs", "King"), Card("Diamonds", "3")])
+
+    player.perform_split(deck)
+
+    assert player.split_hands[0]["bet"] == 100
+    assert player.split_hands[1]["bet"] == 100
+
+
+def test_perform_split_returns_false_when_cannot_split():
+    player = Player("Luis")
+    player.bet = 100
+    player.balance = 500
+    player.hand = [Card("Hearts", "8"), Card("Spades", "9")]
+    deck = FixedDeck([Card("Clubs", "King")])
+
+    result = player.perform_split(deck)
+
+    assert result is False
+    assert player.split_hands == []

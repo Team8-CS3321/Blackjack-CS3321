@@ -426,3 +426,313 @@ def test_double_down_success_advances_turn(monkeypatch):
     result = room_game.double_down("p1")
 
     assert result == {"phase": "dealer_turn"}
+
+
+# ── Split helpers ────────────────────────────────────────────────────────────
+
+from blackjack.rules_and_objects import Card
+
+
+class FixedDeck:
+    def __init__(self, cards):
+        self.cards = list(cards)
+
+    def draw_card(self):
+        return self.cards.pop(0)
+
+
+def _make_split_game():
+    """Single-player RoomGame in PLAYING phase with p1 holding two 8s."""
+    room_game = GameManager().create_game("ROOM1", {"p1": {"username": "Alice", "id": "sid1"}})
+    room_game.phase = GamePhase.PLAYING
+    player = room_game.player_objects["p1"]
+    player.bet = 100
+    player.balance = 500
+    player.hand = [Card("Hearts", "8"), Card("Spades", "8")]
+    return room_game
+
+
+# ── split() ──────────────────────────────────────────────────────────────────
+
+def test_split_rejects_when_not_in_playing_phase():
+    room_game = GameManager().create_game("ROOM1", sample_players())
+
+    result = room_game.split("p1")
+
+    assert result["error"] == "Not in playing phase."
+
+
+def test_split_rejects_unknown_player():
+    room_game = GameManager().create_game("ROOM1", sample_players())
+    room_game.phase = GamePhase.PLAYING
+
+    result = room_game.split("bad_player")
+
+    assert result["error"] == "Player not found."
+
+
+def test_split_rejects_when_not_players_turn():
+    room_game = GameManager().create_game("ROOM1", sample_players())
+    room_game.phase = GamePhase.PLAYING
+    room_game.current_player_index = 1  # p2's turn
+    player = room_game.player_objects["p1"]
+    player.bet = 100
+    player.balance = 500
+    player.hand = [Card("Hearts", "8"), Card("Spades", "8")]
+
+    result = room_game.split("p1")
+
+    assert result["error"] == "Not your turn."
+
+
+def test_split_rejects_when_cards_do_not_match():
+    room_game = GameManager().create_game("ROOM1", {"p1": {"username": "Alice", "id": "sid1"}})
+    room_game.phase = GamePhase.PLAYING
+    player = room_game.player_objects["p1"]
+    player.bet = 100
+    player.balance = 500
+    player.hand = [Card("Hearts", "8"), Card("Spades", "9")]
+
+    result = room_game.split("p1")
+
+    assert result["error"] == "Cannot split."
+
+
+def test_split_creates_split_hands_and_clears_main_hand():
+    room_game = _make_split_game()
+    room_game.game.deck = FixedDeck([Card("Clubs", "King"), Card("Diamonds", "3")])
+
+    room_game.split("p1")
+
+    player = room_game.player_objects["p1"]
+    assert player.hand == []
+    assert len(player.split_hands) == 2
+
+
+def test_split_state_includes_split_hands_and_active_index():
+    room_game = _make_split_game()
+    room_game.game.deck = FixedDeck([Card("Clubs", "King"), Card("Diamonds", "3")])
+
+    result = room_game.split("p1")
+
+    player_state = result["players"][0]
+    assert "split_hands" in player_state
+    assert player_state["active_split_hand_index"] == 0
+
+
+# ── hit() on split hands ─────────────────────────────────────────────────────
+
+def test_hit_on_split_hand_draws_card_to_active_hand():
+    room_game = _make_split_game()
+    room_game.game.deck = FixedDeck([Card("Clubs", "King"), Card("Diamonds", "3")])
+    room_game.split("p1")  # hand0: [8, King]=18, hand1: [8, 3]=11
+
+    room_game.game.deck = FixedDeck([Card("Hearts", "4")])
+    room_game.hit("p1")
+
+    player = room_game.player_objects["p1"]
+    assert len(player.split_hands[0]["hand"]) == 3  # 8 + King + 4
+
+
+def test_hit_on_split_hand_bust_advances_to_next_split_hand():
+    room_game = _make_split_game()
+    room_game.game.deck = FixedDeck([Card("Clubs", "King"), Card("Diamonds", "3")])
+    room_game.split("p1")  # hand0: [8, King]=18
+
+    room_game.game.deck = FixedDeck([Card("Spades", "King")])
+    room_game.hit("p1")  # 8 + King + King = 28 → bust
+
+    player = room_game.player_objects["p1"]
+    assert player.split_hands[0]["is_bust"] is True
+    assert player.active_split_hand_index == 1
+
+
+def test_hit_on_last_split_hand_bust_ends_player_turn(monkeypatch):
+    room_game = _make_split_game()
+    room_game.game.deck = FixedDeck([Card("Clubs", "King"), Card("Diamonds", "King")])
+    room_game.split("p1")  # hand0: [8, King]=18, hand1: [8, King]=18
+
+    player = room_game.player_objects["p1"]
+    player.split_hands[0]["is_stand"] = True
+    player.active_split_hand_index = 1
+
+    advanced = {"called": False}
+    def fake_advance():
+        advanced["called"] = True
+        return {"phase": "round_complete"}
+    monkeypatch.setattr(room_game, "advance_to_next_player", fake_advance)
+
+    room_game.game.deck = FixedDeck([Card("Spades", "King")])
+    room_game.hit("p1")  # 8 + King + King = 28 → bust last hand
+
+    assert advanced["called"] is True
+    assert player.is_stand is True
+
+
+# ── stand() on split hands ───────────────────────────────────────────────────
+
+def test_stand_on_split_hand_marks_hand_stood_and_advances_index():
+    room_game = _make_split_game()
+    room_game.game.deck = FixedDeck([Card("Clubs", "King"), Card("Diamonds", "3")])
+    room_game.split("p1")
+
+    room_game.stand("p1")
+
+    player = room_game.player_objects["p1"]
+    assert player.split_hands[0]["is_stand"] is True
+    assert player.active_split_hand_index == 1
+
+
+def test_stand_on_last_split_hand_ends_player_turn(monkeypatch):
+    room_game = _make_split_game()
+    room_game.game.deck = FixedDeck([Card("Clubs", "King"), Card("Diamonds", "3")])
+    room_game.split("p1")
+
+    player = room_game.player_objects["p1"]
+    player.split_hands[0]["is_stand"] = True
+    player.active_split_hand_index = 1
+
+    monkeypatch.setattr(room_game, "advance_to_next_player", lambda: {"phase": "round_complete"})
+    result = room_game.stand("p1")
+
+    assert player.split_hands[1]["is_stand"] is True
+    assert player.is_stand is True
+    assert result == {"phase": "round_complete"}
+
+
+# ── double_down() on split hands ─────────────────────────────────────────────
+
+def test_double_down_on_split_hand_success():
+    room_game = _make_split_game()  # bet=100, balance=500
+    # hand0: [8, 2]=10, hand1: [8, King]=18
+    room_game.game.deck = FixedDeck([Card("Clubs", "2"), Card("Diamonds", "King")])
+    room_game.split("p1")  # balance drops to 400
+
+    room_game.game.deck = FixedDeck([Card("Hearts", "10")])
+    room_game.double_down("p1")  # 8+2+10=20, bet doubles 100→200, balance 400→300
+
+    player = room_game.player_objects["p1"]
+    assert player.split_hands[0]["bet"] == 200
+    assert player.balance == 300
+    assert len(player.split_hands[0]["hand"]) == 3
+    assert player.split_hands[0]["doubled_down"] is True
+    assert player.split_hands[0]["is_stand"] is True
+
+
+def test_double_down_on_split_hand_rejects_when_total_not_9_10_11():
+    room_game = _make_split_game()
+    room_game.game.deck = FixedDeck([Card("Clubs", "King"), Card("Diamonds", "King")])
+    room_game.split("p1")  # hand0: [8, King]=18 → not 9/10/11
+
+    result = room_game.double_down("p1")
+
+    assert result["error"] == "Double down not allowed on this split hand."
+
+
+# ── get_game_state() with split ──────────────────────────────────────────────
+
+def test_get_game_state_includes_split_hands_when_present():
+    room_game = _make_split_game()
+    room_game.game.deck = FixedDeck([Card("Clubs", "King"), Card("Diamonds", "3")])
+    room_game.split("p1")
+
+    state = room_game.get_game_state()
+
+    player_state = state["players"][0]
+    assert "split_hands" in player_state
+    assert len(player_state["split_hands"]) == 2
+    assert "active_split_hand_index" in player_state
+
+
+def test_get_game_state_split_hand_includes_required_fields():
+    room_game = _make_split_game()
+    room_game.game.deck = FixedDeck([Card("Clubs", "King"), Card("Diamonds", "3")])
+    room_game.split("p1")
+
+    state = room_game.get_game_state()
+    sh = state["players"][0]["split_hands"][0]
+
+    for field in ("hand", "hand_value", "bet", "is_bust", "is_stand", "doubled_down"):
+        assert field in sh
+
+
+def test_get_game_state_without_split_has_no_split_fields():
+    room_game = GameManager().create_game("ROOM1", sample_players())
+
+    state = room_game.get_game_state()
+
+    for p in state["players"]:
+        assert "split_hands" not in p
+        assert "active_split_hand_index" not in p
+
+
+# ── _apply_split_payouts() ────────────────────────────────────────────────────
+
+def test_apply_split_payouts_both_win():
+    room_game = GameManager().create_game("ROOM1", {"p1": {"username": "Alice", "id": "sid1"}})
+    player = room_game.player_objects["p1"]
+    player.split_hands = [
+        {"hand": [Card("Hearts", "10"), Card("Clubs", "9")], "bet": 100, "is_bust": False, "is_stand": True, "doubled_down": False},   # 19
+        {"hand": [Card("Spades", "10"), Card("Diamonds", "8")], "bet": 100, "is_bust": False, "is_stand": True, "doubled_down": False}, # 18
+    ]
+    room_game.game.dealer_hand = [Card("Clubs", "10"), Card("Spades", "7")]  # dealer 17
+    results = {"Alice": {"outcome": "lose", "payout": 0, "hand_value": 0}}
+
+    room_game._apply_split_payouts(results)
+
+    assert results["Alice"]["outcome"] == "win"
+    assert results["Alice"]["payout"] == 400  # 200 per win × 2
+    assert player.balance == 1400  # 1000 default + 400
+
+
+def test_apply_split_payouts_both_lose():
+    room_game = GameManager().create_game("ROOM1", {"p1": {"username": "Alice", "id": "sid1"}})
+    player = room_game.player_objects["p1"]
+    player.split_hands = [
+        {"hand": [Card("Hearts", "5"), Card("Clubs", "6")], "bet": 100, "is_bust": False, "is_stand": True, "doubled_down": False},  # 11
+        {"hand": [Card("Spades", "4"), Card("Diamonds", "7")], "bet": 100, "is_bust": False, "is_stand": True, "doubled_down": False}, # 11
+    ]
+    room_game.game.dealer_hand = [Card("Clubs", "10"), Card("Spades", "9")]  # dealer 19
+    results = {"Alice": {"outcome": "lose", "payout": 0, "hand_value": 0}}
+
+    room_game._apply_split_payouts(results)
+
+    assert results["Alice"]["outcome"] == "lose"
+    assert results["Alice"]["payout"] == 0
+    assert player.balance == 1000
+
+
+def test_apply_split_payouts_mixed_outcome_reported_as_push():
+    room_game = GameManager().create_game("ROOM1", {"p1": {"username": "Alice", "id": "sid1"}})
+    player = room_game.player_objects["p1"]
+    player.split_hands = [
+        {"hand": [Card("Hearts", "10"), Card("Clubs", "9")], "bet": 100, "is_bust": False, "is_stand": True, "doubled_down": False},  # 19 wins
+        {"hand": [Card("Spades", "5"), Card("Diamonds", "6")], "bet": 100, "is_bust": False, "is_stand": True, "doubled_down": False}, # 11 loses
+    ]
+    room_game.game.dealer_hand = [Card("Clubs", "10"), Card("Spades", "8")]  # dealer 18
+    results = {"Alice": {"outcome": "lose", "payout": 0, "hand_value": 0}}
+
+    room_game._apply_split_payouts(results)
+
+    assert results["Alice"]["outcome"] == "push"
+    assert results["Alice"]["payout"] == 200  # only the winning hand pays
+    assert player.balance == 1200
+
+
+def test_apply_split_payouts_bust_hand_loses_other_evaluated_normally():
+    room_game = GameManager().create_game("ROOM1", {"p1": {"username": "Alice", "id": "sid1"}})
+    player = room_game.player_objects["p1"]
+    player.split_hands = [
+        {"hand": [Card("Hearts", "10"), Card("Clubs", "9"), Card("Spades", "5")], "bet": 100, "is_bust": True, "is_stand": False, "doubled_down": False},  # bust
+        {"hand": [Card("Spades", "10"), Card("Diamonds", "8")], "bet": 100, "is_bust": False, "is_stand": True, "doubled_down": False},  # 18 wins
+    ]
+    room_game.game.dealer_hand = [Card("Clubs", "10"), Card("Spades", "7")]  # dealer 17
+    results = {"Alice": {"outcome": "lose", "payout": 0, "hand_value": 0}}
+
+    room_game._apply_split_payouts(results)
+
+    split_res = results["Alice"]["split_results"]
+    assert split_res[0]["outcome"] == "lose"
+    assert split_res[1]["outcome"] == "win"
+    assert results["Alice"]["outcome"] == "push"
+    assert results["Alice"]["payout"] == 200
